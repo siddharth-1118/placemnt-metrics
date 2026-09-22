@@ -164,3 +164,11 @@ ON CONFLICT ("email") DO UPDATE
       "evaluatorAssigned" = EXCLUDED."evaluatorAssigned",
       "passwordHash" = EXCLUDED."passwordHash",
       "updatedAt" = now();
+
+-- ---------------------------------------------------------------------
+-- 6. Self-check — should return the two coordinator rows below
+-- ---------------------------------------------------------------------
+SELECT "email", "role", "evaluatorAssigned" AS assigned
+FROM "Student"
+WHERE "role" = 'COORDINATOR'
+ORDER BY "email";
