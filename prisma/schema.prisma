@@ -1,0 +1,149 @@
+// SRM Placement Ranking System — Database Schema
+// Prisma 5. Works with SQLite (local dev) and PostgreSQL/Supabase via DATABASE_URL.
+//
+// Portability notes:
+//  - JSON payloads (proofUrls, scrape payloads) are stored in TEXT columns and
+//    parsed in application code so the identical schema runs on SQLite and Postgres.
+//  - On Postgres you may switch these to native JSONB — see supabase/schema.sql.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// A student's placement submission (AO1 batch).
+model Student {
+  id             String   @id @default(cuid())
+  registerNumber String   @unique
+  fullName       String
+  email          String   @unique
+  facultyAdvisor String?
+
+  // Academic marks
+  tenthPercent   Float
+  twelfthPercent Float
+  cgpa           Float
+
+  // Profile links
+  githubUrl      String?
+  leetcodeUrl    String?
+  /// JSON array of { label, url } proof links (projects / internships)
+  proofUrls      String   @default("[]")
+
+  // Auth & role
+  /// STUDENT | COORDINATOR — every account can log in; only coordinators
+  /// assigned to the evaluation task can open the dashboard.
+  role              String   @default("STUDENT")
+  /// Coordinators: true when assigned to evaluate this batch (scrape & score).
+  evaluatorAssigned Boolean  @default(false)
+  /// scrypt hash (salt:hash, hex). Students may optionally set one to view
+  /// their own submission; coordinators must have one.
+  passwordHash      String?
+
+  // Coordinator evaluation
+  /// PENDING | VERIFIED
+  status         String   @default("PENDING")
+  coordinatorNote String?
+
+  /// Secret token that scopes document download links (ids are guessable;
+  /// the token makes stored files unguessable without auth complexity).
+  uploadToken    String   @default(cuid())
+
+  documents      Document[]
+  projectLinks   ProjectLink[]
+
+  // Scores (rubric out of 100)
+  scoreAcademic   Float   @default(0) // max 40 (10th:10, 12th:10, CGPA:20)
+  scoreGithub     Float   @default(0) // max 15
+  scoreCoding     Float   @default(0) // max 10 (LeetCode)
+  scoreProjects   Float   @default(0) // max 10
+  scoreInternship Float   @default(0) // max 10
+  scoreExtras     Float   @default(0) // max 15 (certifications, OSS, communication)
+  totalScore      Float   @default(0)
+  /// Placement rank (1 = best) among all students with a total score; ties share a rank
+  rank            Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scrapes ScrapeResult[]
+
+  @@index([status])
+  @@index([totalScore])
+}
+
+/// One scrape job/result per platform per student (upserted on re-scrape).
+model ScrapeResult {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// GITHUB | LEETCODE
+  platform  String
+  /// PENDING | RUNNING | SUCCESS | FAILED
+  status    String   @default("PENDING")
+  /// live | mock — how this payload was produced
+  mode      String?
+  /// Scraped payload (platform-specific JSON) when status = SUCCESS
+  dataJson  String?
+  errorMessage String?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  @@unique([studentId, platform])
+  @@index([studentId])
+}
+
+/// A proof document uploaded by the student (PDF/JPG/PNG, ≤ 10 MB).
+/// Files live on disk under uploads/<studentId>/ with the id as filename.
+model Document {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// One of DOC_CATEGORIES (see src/lib/categories.ts)
+  category  String
+  /// Original file name, shown to coordinators
+  fileName  String
+  /// "application/pdf", "image/png", …
+  mimeType  String
+  /// File size in bytes
+  sizeBytes Int
+  /// Optional caption from the student (e.g. "Zoho internship letter")
+  note      String?
+
+  /// PENDING | VERIFIED | REJECTED
+  status     String   @default("PENDING")
+  reviewedAt DateTime?
+  reviewNote String?
+
+  createdAt DateTime @default(now())
+
+  @@index([studentId])
+  @@index([category])
+}
+
+/// A project / portfolio link. Students may add as many as they want.
+model ProjectLink {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// One of LINK_CATEGORIES (see src/lib/categories.ts)
+  category  String
+  label     String
+  url       String
+
+  /// PENDING | VERIFIED | REJECTED
+  status     String   @default("PENDING")
+  reviewedAt DateTime?
+  reviewNote String?
+
+  createdAt DateTime @default(now())
+
+  @@index([studentId])
+}

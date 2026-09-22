@@ -1,0 +1,51 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/documents/:id/file — stream the stored document.
+ *
+ * Access: the owner, or the assigned evaluator. A valid `?token=` matching the
+ * student's uploadToken is also accepted so files open in new tabs/iframe
+ * viewers where the session cookie may not be forwarded.
+ */
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+  const user = await getSessionUser();
+
+  const doc = await prisma.document.findUnique({
+    where: { id: params.id },
+    include: { student: { select: { uploadToken: true } } },
+  });
+  if (!doc) {
+    return NextResponse.json({ error: "Document not found" }, { status: 404 });
+  }
+
+  const token = new URL(req.url).searchParams.get("token");
+  const isEvaluator = user?.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isOwner = user?.id === doc.studentId;
+  const tokenOk = token !== null && token === doc.student.uploadToken;
+
+  if (!isOwner && !isEvaluator && !tokenOk) {
+    return NextResponse.json({ error: "Not authorized to view this document" }, { status: 403 });
+  }
+
+  const filePath = path.join(process.cwd(), "uploads", doc.studentId, doc.id);
+  try {
+    const buf = await fs.readFile(filePath);
+    return new NextResponse(new Uint8Array(buf), {
+      headers: {
+        "Content-Type": doc.mimeType,
+        "Content-Length": String(buf.length),
+        // Render inline in browser tabs (viewers) rather than force-download.
+        "Content-Disposition": `inline; filename="${encodeURIComponent(doc.fileName)}"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
+  } catch {
+    return NextResponse.json({ error: "Stored file is missing" }, { status: 410 });
+  }
+}
