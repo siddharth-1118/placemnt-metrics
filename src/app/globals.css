@@ -2,43 +2,252 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Design tokens — "ink & iris"
+   A warm paper canvas, deep ink text, and an iris/indigo primary with a
+   coral accent. Tuned by eye rather than by a generator: slightly desaturated
+   surfaces, generous radius, layered soft shadows.
+   ========================================================================== */
+
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 228 38% 96%;
+    --foreground: 230 35% 14%;
+
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 94%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 88%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.625rem;
+    --card-foreground: 230 35% 14%;
+
+    --primary: 245 65% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 227 30% 93%;
+    --secondary-foreground: 230 30% 18%;
+
+    --muted: 227 28% 92%;
+    --muted-foreground: 229 14% 44%;
+
+    --accent: 228 42% 90%;
+    --accent-foreground: 230 35% 14%;
+
+    --destructive: 356 72% 54%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 228 22% 86%;
+    --input: 228 24% 84%;
+    --ring: 245 65% 55%;
+
+    --radius: 1rem;
+
+    /* Glass recipe tokens — one place to re-tune the whole material */
+    --glass-bg: 0 0% 100%;
+    --glass-alpha: 0.58;
+    --glass-border-alpha: 0.55;
+    --glass-highlight: 0 0% 100%;
   }
 
   * {
     @apply border-border;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply text-foreground antialiased;
+    background-color: hsl(var(--background));
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+  }
+
+  /* Thin, quiet scrollbars */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
   }
 }
 
-/* Thin, tidy scrollbars for panels */
-.scrollbar-thin::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* ==========================================================================
+   Ambient backdrop — aurora + grain
+   Two large, hand-placed color fields drift behind a fine grain layer.
+   The grain is what keeps this from feeling machine-generated: real glass
+   UIs always sit on slightly imperfect surfaces.
+   ========================================================================== */
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
 }
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
+
+.aurora::before,
+.aurora::after {
+  content: "";
+  position: absolute;
   border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.55;
+}
+
+.aurora::before {
+  width: 56rem;
+  height: 56rem;
+  top: -22rem;
+  right: -14rem;
+  background: radial-gradient(
+    circle at 35% 35%,
+    hsl(258 90% 74% / 0.5),
+    hsl(222 90% 70% / 0.28) 55%,
+    transparent 75%
+  );
+}
+
+.aurora::after {
+  width: 48rem;
+  height: 48rem;
+  bottom: -20rem;
+  left: -12rem;
+  background: radial-gradient(
+    circle at 60% 55%,
+    hsl(172 66% 70% / 0.4),
+    hsl(198 88% 72% / 0.22) 55%,
+    transparent 78%
+  );
+}
+
+/* A third, smaller warm field via a child element (kept in layout markup) */
+.aurora-ember {
+  position: absolute;
+  width: 26rem;
+  height: 26rem;
+  top: 38%;
+  left: 58%;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.35;
+  background: radial-gradient(
+    circle at 50% 50%,
+    hsl(24 90% 72% / 0.45),
+    transparent 70%
+  );
+}
+
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.05'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora::before,
+  .aurora::after {
+    filter: blur(90px);
+  }
+}
+
+/* ==========================================================================
+   Glass materials
+   .glass        — the standard panel: blurred, translucent, hairline border,
+                   with a 1px top highlight that mimics a beveled edge.
+   .glass-strong — for floating layers (header, modal) that overlap content.
+   .glass-inset  — recessed wells inside glass panels (inputs, table wells).
+   ========================================================================== */
+
+@layer components {
+  .glass {
+    background: hsl(var(--glass-bg) / var(--glass-alpha));
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid hsl(var(--glass-bg) / 0.0);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--glass-highlight) / 0.7),
+      0 1px 2px hsl(230 40% 20% / 0.05),
+      0 8px 32px -8px hsl(230 40% 20% / 0.12);
+  }
+
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      160deg,
+      hsl(var(--glass-highlight) / 0.85),
+      hsl(var(--glass-highlight) / 0.1) 30%,
+      hsl(230 40% 30% / 0.08) 80%,
+      hsl(var(--glass-highlight) / 0.4)
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .glass-strong {
+    background: hsl(var(--glass-bg) / 0.72);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    backdrop-filter: blur(24px) saturate(1.5);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--glass-highlight) / 0.8),
+      0 2px 6px hsl(230 40% 20% / 0.06),
+      0 24px 64px -16px hsl(230 40% 20% / 0.22);
+  }
+
+  .glass-inset {
+    background: hsl(228 30% 92% / 0.55);
+    box-shadow:
+      inset 0 1px 2px hsl(230 40% 20% / 0.08),
+      inset 0 -1px 0 hsl(var(--glass-highlight) / 0.5);
+  }
+
+  /* Hover lift shared by interactive glass cards */
+  .glass-hover {
+    transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .glass-hover:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--glass-highlight) / 0.8),
+      0 2px 4px hsl(230 40% 20% / 0.06),
+      0 20px 48px -12px hsl(230 40% 20% / 0.2);
+  }
+}
+
+/* ==========================================================================
+   Typography helpers
+   ========================================================================== */
+
+@layer components {
+  .text-gradient {
+    background: linear-gradient(
+      100deg,
+      hsl(245 70% 58%) 0%,
+      hsl(258 75% 62%) 45%,
+      hsl(205 80% 55%) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Tabular numerals everywhere numbers are compared */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
 }

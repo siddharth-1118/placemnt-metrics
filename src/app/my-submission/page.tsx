@@ -26,13 +26,13 @@ export default async function MySubmissionPage() {
   const student = toDto(row);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-10 sm:px-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-10 sm:px-6 sm:py-12">
+      <div className="animate-rise flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            Hi, {student.fullName.split(" ")[0]}
+          <h1 className="text-3xl font-bold tracking-[-0.025em] sm:text-4xl">
+            Hi, <span className="text-gradient">{student.fullName.split(" ")[0]}</span>
           </h1>
-          <p className="mt-1 text-muted-foreground">
+          <p className="mt-2 max-w-xl text-muted-foreground">
             Your submission, documents, links and scraped coding profiles. Other students&apos;
             submissions stay private.
           </p>
@@ -54,7 +54,7 @@ export default async function MySubmissionPage() {
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold">Proof documents</h2>
+          <h2 className="text-lg font-semibold tracking-[-0.015em]">Proof documents</h2>
           <p className="text-sm text-muted-foreground">
             Upload marksheets, internship letters, certificates, competition proofs, memberships and
             SHL documents. Coordinators verify each file individually.
@@ -65,7 +65,7 @@ export default async function MySubmissionPage() {
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold">Project links</h2>
+          <h2 className="text-lg font-semibold tracking-[-0.015em]">Project links</h2>
         </div>
         <LinkManager />
       </section>

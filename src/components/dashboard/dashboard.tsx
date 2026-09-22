@@ -170,7 +170,7 @@ export function Dashboard() {
   }
 
   const selectCls =
-    "h-9 rounded-lg border bg-card px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "h-9.5 glass-inset rounded-[calc(var(--radius)-6px)] border-0 px-3 text-sm shadow-none outline-none transition focus-visible:ring-2 focus-visible:ring-ring/50";
 
   return (
     <div className="space-y-6">
@@ -182,13 +182,13 @@ export function Dashboard() {
           { label: "Pending review", value: stats.pending, icon: Loader2 },
           { label: "Avg. score", value: stats.avgScore, icon: Award },
         ].map((c) => (
-          <Card key={c.label}>
+          <Card key={c.label} className="glass-hover">
             <CardContent className="flex items-center gap-3 pt-5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+              <span className="glass-inset flex h-10 w-10 items-center justify-center rounded-xl">
                 <c.icon className="h-4.5 w-4.5 text-primary" />
               </span>
               <div>
-                <p className="text-xl font-bold leading-tight">{c.value}</p>
+                <p className="tnum text-xl font-bold leading-tight tracking-[-0.02em]">{c.value}</p>
                 <p className="text-xs text-muted-foreground">{c.label}</p>
               </div>
             </CardContent>
@@ -229,9 +229,9 @@ export function Dashboard() {
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border bg-card shadow-card scrollbar-thin">
+      <div className="glass overflow-x-auto rounded-2xl scrollbar-thin">
         <table className="w-full min-w-[1080px] text-sm">
-          <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <thead className="text-left text-xs uppercase tracking-[0.07em] text-muted-foreground/90">
             <tr>
               <Th onClick={() => toggleSort("rank")}>Rank</Th>
               <Th onClick={() => toggleSort("registerNumber")}>Reg. no.</Th>
@@ -270,7 +270,7 @@ export function Dashboard() {
               <tr
                 key={s.id}
                 onClick={() => setSelectedId(s.id)}
-                className="cursor-pointer border-t transition-colors hover:bg-accent/50"
+                className="cursor-pointer border-t border-border/60 transition-colors hover:bg-accent/40"
               >
                 <td className="px-3 py-2.5 font-semibold tabular-nums">{s.rank ? `#${s.rank}` : "—"}</td>
                 <td className="px-3 py-2.5 font-mono text-xs">{s.registerNumber}</td>

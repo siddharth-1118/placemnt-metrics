@@ -37,11 +37,25 @@ const config: Config = {
       },
       borderRadius: {
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        md: "calc(var(--radius) - 4px)",
+        sm: "calc(var(--radius) - 8px)",
+        xl: "calc(var(--radius) + 6px)",
+        "2xl": "calc(var(--radius) + 10px)",
       },
       boxShadow: {
-        card: "0 1px 2px 0 rgb(15 23 42 / 0.04), 0 4px 16px -4px rgb(15 23 42 / 0.08)",
+        card: "inset 0 1px 0 hsl(0 0% 100% / 0.7), 0 8px 32px -8px hsl(230 40% 20% / 0.12)",
+        "card-hover":
+          "inset 0 1px 0 hsl(0 0% 100% / 0.8), 0 20px 48px -12px hsl(230 40% 20% / 0.2)",
+        strong: "0 24px 64px -16px hsl(230 40% 20% / 0.22)",
+      },
+      keyframes: {
+        rise: {
+          "0%": { opacity: "0", transform: "translateY(10px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+      },
+      animation: {
+        rise: "rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
       },
     },
   },

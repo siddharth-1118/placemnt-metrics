@@ -212,10 +212,10 @@ export function StudentDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="my-6 w-full max-w-4xl rounded-2xl border bg-background shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[hsl(230_35%_14%/0.45)] p-4 backdrop-blur-[6px]" role="dialog" aria-modal="true">
+      <div className="glass-strong my-6 w-full max-w-4xl animate-rise rounded-3xl">
         {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center gap-3 rounded-t-2xl border-b bg-card/95 px-5 py-4 backdrop-blur">
+        <div className="sticky top-0 z-10 flex items-center gap-3 rounded-t-3xl px-5 py-4">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
             <UserRound className="h-5 w-5" />
           </span>
@@ -239,6 +239,7 @@ export function StudentDetailModal({
           </Button>
         </div>
 
+        <div className="h-px w-full bg-gradient-to-r from-transparent via-border to-transparent" />
         <div className="space-y-6 p-5">
           {error && (
             <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -265,7 +266,7 @@ export function StudentDetailModal({
                       Re-scrape
                     </Button>
                   </div>
-                  <div className="overflow-hidden rounded-xl border">
+                  <div className="glass-inset overflow-hidden rounded-xl">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <tr>
@@ -393,7 +394,7 @@ export function StudentDetailModal({
                 <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                   Score entry (out of 100)
                 </h3>
-                <div className="rounded-xl border p-4">
+                <div className="glass-inset rounded-xl p-4">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {SCORE_FIELDS.map((f) => (
                       <div key={f.key} className="space-y-1">

@@ -14,11 +14,14 @@ export default async function CoordinatorDashboardPage() {
   if (user.role !== "COORDINATOR" || !user.evaluatorAssigned) redirect("/my-submission");
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Coordinator dashboard</h1>
-        <p className="mt-2 text-muted-foreground">
-          Review submissions against live scraped GitHub &amp; LeetCode data, then score and rank the batch.
+    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
+      <div className="animate-rise mb-7">
+        <h1 className="text-3xl font-bold tracking-[-0.025em] sm:text-4xl">
+          Evaluation <span className="text-gradient">dashboard</span>
+        </h1>
+        <p className="mt-2.5 max-w-2xl text-muted-foreground">
+          Every submission next to its live-scraped GitHub &amp; LeetCode evidence. Verify
+          documents, score against the caps, and the leaderboard reorders itself.
         </p>
       </div>
       <Dashboard />

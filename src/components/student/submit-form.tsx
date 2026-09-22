@@ -168,8 +168,8 @@ export function SubmitForm() {
       )}
 
       {sessionInfo && (
-        <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm">
-          <UserRound className="h-4 w-4 text-primary" />
+        <div className="glass flex items-center gap-2.5 rounded-xl px-4 py-3 text-sm">
+          <UserRound className="h-4 w-4 shrink-0 text-primary" />
           <span>
             Signed in as <strong>{sessionInfo.fullName}</strong> ({sessionInfo.email})
             {sessionInfo.role === "COORDINATOR" && (
@@ -229,7 +229,7 @@ export function SubmitForm() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Documents &amp; project links — after you submit
         </h2>
-        <div className="rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        <div className="glass rounded-xl px-4 py-3.5 text-sm text-muted-foreground">
           <ul className="list-inside list-disc space-y-1">
             <li><strong className="text-foreground">Upload documents</strong> (PDF/JPG, ≤10 MB): 10th &amp; 12th marksheets, CGPA marksheet, internship proof, skill &amp; global certifications, competitions/hackathons, in-house projects, professional memberships, SHL talent discovery program.</li>
             <li><strong className="text-foreground">Add project links</strong> — unlimited: projects, full-stack projects, deployed in-house projects (links can replace documents for in-house projects &amp; memberships).</li>
