@@ -1,9 +1,8 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { docToDto } from "@/lib/dto";
+import { putDocument } from "@/lib/storage";
 import {
   DOC_CATEGORY_KEYS,
   UPLOAD_MAX_BYTES,
@@ -67,22 +66,25 @@ export async function POST(req: Request) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const doc = await prisma.document.create({
-    data: {
-      studentId: student.id,
-      category,
-      fileName: file.name.slice(0, 200),
-      mimeType: mime,
-      sizeBytes: file.size,
-      note,
-      // File bytes are written after the row is created; a crash between the
-      // two leaves an orphan row at worst, never a dangling file reference.
-    },
-  });
-
-  const dir = path.join(process.cwd(), "uploads", student.id);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, doc.id), buffer);
-
-  return NextResponse.json({ document: docToDto(doc) }, { status: 201 });
+  // Storage write FIRST (Supabase when configured, disk otherwise). If storage
+  // is misconfigured and even the disk fallback fails, we fail the request —
+  // no orphan Document rows without a backing file.
+  // The document id is needed as the storage key, so create a temp id first:
+  // reuse Prisma's cuid by creating the row inside a transaction AFTER storage
+  // succeeds is not possible (we need the id), so we generate the id here.
+  const docId = (await prisma.document.create({ data: { studentId: student.id, category, fileName: "pending", mimeType: mime, sizeBytes: file.size } })).id;
+  try {
+    await putDocument(student.id, docId, buffer, mime);
+    const doc = await prisma.document.update({
+      where: { id: docId },
+      data: { fileName: file.name.slice(0, 200), note },
+    });
+    return NextResponse.json({ document: docToDto(doc) }, { status: 201 });
+  } catch (err) {
+    await prisma.document.delete({ where: { id: docId } }).catch(() => undefined);
+    return NextResponse.json(
+      { error: `Could not store the file: ${(err as Error).message}` },
+      { status: 500 }
+    );
+  }
 }

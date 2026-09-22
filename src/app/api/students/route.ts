@@ -163,11 +163,19 @@ export async function POST(req: Request) {
     });
   }
 
-  // Fire-and-forget background scrape jobs (student response returns now).
-  enqueueScrapes(student.id, student.githubUrl, student.leetcodeUrl);
+  // Await the scrape jobs so results are ready when this response lands
+  // (serverless platforms freeze execution after the response). Failures are
+  // persisted on the job rows — the response always goes through.
+  await enqueueScrapes(student.id, student.githubUrl, student.leetcodeUrl);
+
+  // Re-fetch so the response carries the freshly written scrape payloads.
+  const fresh = await prisma.student.findUnique({
+    where: { id: student.id },
+    include: { scrapes: true, documents: true, projectLinks: true },
+  });
 
   return NextResponse.json(
-    { student: toDto(student), message: "Submission received — profile scraping started." },
+    { student: toDto(fresh ?? student), message: "Submission received — coding profiles scraped." },
     { status: existing ? 200 : 201 }
   );
 }

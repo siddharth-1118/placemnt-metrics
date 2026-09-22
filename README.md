@@ -63,9 +63,72 @@ Demo credentials after `npm run db:seed`:
 
 `SCRAPE_MODE` in `.env` controls the scraper engine:
 
-- `auto` *(default)* — try live scraping; on failure fall back to deterministic mock data so demos never break.
-- `live` — only real scraping; errors surface as FAILED jobs.
+- `auto` — try live scraping; on failure fall back to deterministic mock data so demos never break.
+- `live` *(default)* — only real scraping; errors surface as FAILED jobs.
 - `mock` — fully offline; no network calls.
+
+Scraping runs **synchronously** on submit and re-scrape (results are in the API response when it
+lands), which keeps it compatible with serverless platforms such as Vercel.
+
+## Deploying to Vercel (+ Supabase)
+
+The backend is **fully handled by Vercel**: every `src/app/api/**` route deploys as a serverless
+function — nothing else to host. Two Vercel constraints shape the setup: there is **no persistent
+disk** (SQLite files and `uploads/` would vanish), so both the database and document storage must
+live in Supabase.
+
+### 1. Create the Supabase pieces
+
+- **Database** — Dashboard → *Connect* → **Session pooler (port 5432)** → copy the URI and replace
+  `[YOUR-PASSWORD]` with your real database password.
+- **Storage** — created automatically by the app on first upload (bucket
+  `placement-documents`, private). Nothing to click.
+- **Service role key** — Dashboard → *Project Settings* → *API* → `service_role` secret. Server-only:
+  it bypasses row-level security, so never expose it to the browser.
+
+### 2. Import the repo into Vercel
+
+New Project → import `siddharth-1118/placemnt-metrics` → framework auto-detects Next.js.
+Set these **Environment Variables** (Production + Preview):
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | the Supabase pooler URI from step 1 (keep `?pgbouncer=true&connection_limit=1` if shown) |
+| `SESSION_SECRET` | long random string — `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | the service_role secret from step 1 |
+| `STORAGE_DRIVER` | `auto` (uses Supabase Storage because the keys above exist) |
+| `SCRAPE_MODE` | `live` |
+| `GITHUB_TOKEN` | optional — raises GitHub REST rate limits (no scopes needed) |
+
+### 3. Create the tables in Supabase (one-time, from your machine)
+
+The tables can't be pushed from Vercel's build, so run once before/after the first deploy —
+hotspot or any network that allows port 5432:
+
+```bash
+# switches DATABASE_URL in .env, flips provider to postgres, pushes schema, seeds coordinators
+npm run db:use -- "postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres"
+
+# then re-create your coordinator accounts in the cloud DB
+npx tsx scripts/create-coordinator.ts "sv3824@srmist.edu.in" "<password>" "<name>" true
+```
+
+Commit nothing from this — `.env` is gitignored; Vercel reads only its own env vars.
+
+### 4. Deploy
+
+Push to `main` (or click Deploy). Every push auto-redeploys. Verify by opening the deployment URL:
+
+- `/login` signs in with the coordinator account you created in step 3
+- `/student/submit` runs a **live** GitHub/LeetCode scrape inline (1–3 s) and returns results
+- document uploads land in Supabase Storage (check Dashboard → Storage → `placement-documents`)
+
+### Local dev stays unchanged
+
+With no Supabase keys in `.env`, the app still uses SQLite + local `uploads/` disk automatically.
+Setting the `SUPABASE_*` keys locally flips documents to Supabase Storage while the database can
+remain SQLite — the two switches (`DATABASE_URL`, `STORAGE_DRIVER`) are independent.
 
 Optional `GITHUB_TOKEN` raises GitHub's rate limit from 60 to 5,000 req/h (public data needs no scopes).
 

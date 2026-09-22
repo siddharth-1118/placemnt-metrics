@@ -1,8 +1,7 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
+import { getDocument } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -33,19 +32,17 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ error: "Not authorized to view this document" }, { status: 403 });
   }
 
-  const filePath = path.join(process.cwd(), "uploads", doc.studentId, doc.id);
-  try {
-    const buf = await fs.readFile(filePath);
-    return new NextResponse(new Uint8Array(buf), {
-      headers: {
-        "Content-Type": doc.mimeType,
-        "Content-Length": String(buf.length),
-        // Render inline in browser tabs (viewers) rather than force-download.
-        "Content-Disposition": `inline; filename="${encodeURIComponent(doc.fileName)}"`,
-        "Cache-Control": "private, no-store",
-      },
-    });
-  } catch {
+  const stored = await getDocument(doc.studentId, doc.id);
+  if (!stored) {
     return NextResponse.json({ error: "Stored file is missing" }, { status: 410 });
   }
+  return new NextResponse(new Uint8Array(stored.bytes), {
+    headers: {
+      "Content-Type": doc.mimeType,
+      "Content-Length": String(stored.bytes.length),
+      // Render inline in browser tabs (viewers) rather than force-download.
+      "Content-Disposition": `inline; filename="${encodeURIComponent(doc.fileName)}"`,
+      "Cache-Control": "private, no-store",
+    },
+  });
 }

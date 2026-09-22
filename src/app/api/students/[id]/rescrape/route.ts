@@ -48,10 +48,10 @@ export async function POST(
         { status: 400 }
       );
     }
-    runSingleScrape(student.id, platform, handle);
+    await runSingleScrape(student.id, platform, handle);
   } else {
-    enqueueScrapes(student.id, student.githubUrl, student.leetcodeUrl);
+    await enqueueScrapes(student.id, student.githubUrl, student.leetcodeUrl);
   }
 
-  return NextResponse.json({ ok: true, message: "Re-scrape started" });
+  return NextResponse.json({ ok: true, message: "Re-scrape finished" });
 }

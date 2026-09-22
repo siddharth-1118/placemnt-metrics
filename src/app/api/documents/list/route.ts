@@ -62,13 +62,8 @@ export async function DELETE(req: Request) {
   }
 
   // Best-effort file removal; the row is the source of truth.
-  try {
-    const { promises: fs } = await import("node:fs");
-    const path = await import("node:path");
-    await fs.unlink(path.join(process.cwd(), "uploads", doc.studentId, doc.id));
-  } catch {
-    /* file may already be gone */
-  }
+  const { deleteDocument } = await import("@/lib/storage");
+  await deleteDocument(doc.studentId, doc.id);
 
   await prisma.document.delete({ where: { id } });
   return NextResponse.json({ ok: true });

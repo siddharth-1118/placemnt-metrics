@@ -4,12 +4,18 @@ import { parseGithubLogin, parseLeetcodeUser } from "@/lib/utils";
 import type { Platform } from "@/lib/types";
 
 /**
- * Upserts a PENDING ScrapeResult row for each platform the student provided,
- * then executes the jobs. Called in a fire-and-forget fashion from the submit
- * endpoint so the student's HTTP response returns immediately ("background
- * scraping"); the dashboard polls for results.
+ * Runs the scrape jobs for each platform the student provided and returns a
+ * promise that settles when every job has finished (success OR failure —
+ * failures are persisted on the job row, never thrown).
+ *
+ * The submit endpoint awaits this so serverless platforms (Vercel) don't freeze
+ * the work after the response; local dev keeps the same behavior.
  */
-export function enqueueScrapes(studentId: string, githubUrl?: string | null, leetcodeUrl?: string | null) {
+export function enqueueScrapes(
+  studentId: string,
+  githubUrl?: string | null,
+  leetcodeUrl?: string | null
+): Promise<unknown> {
   const jobs: Promise<unknown>[] = [];
 
   const ghLogin = githubUrl ? parseGithubLogin(githubUrl) : null;
@@ -22,13 +28,16 @@ export function enqueueScrapes(studentId: string, githubUrl?: string | null, lee
     jobs.push(executeScrape(studentId, "LEETCODE", lcUser));
   }
 
-  // Swallow rejections — failures are persisted on the job row.
-  Promise.allSettled(jobs).catch(() => undefined);
+  return Promise.allSettled(jobs);
 }
 
 /** Single-platform variant used by the per-student re-scrape endpoint. */
-export function runSingleScrape(studentId: string, platform: Platform, handle: string) {
-  void executeScrape(studentId, platform, handle).catch(() => undefined);
+export function runSingleScrape(
+  studentId: string,
+  platform: Platform,
+  handle: string
+): Promise<unknown> {
+  return executeScrape(studentId, platform, handle).catch(() => undefined);
 }
 
 /** Run one scrape job, persisting status transitions and the payload. */
