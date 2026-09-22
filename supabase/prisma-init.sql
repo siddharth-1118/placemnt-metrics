@@ -146,17 +146,21 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 INSERT INTO "Student" (
   "id", "registerNumber", "fullName", "email",
   "tenthPercent", "twelfthPercent", "cgpa",
-  "role", "evaluatorAssigned", "passwordHash", "proofUrls", "uploadToken"
+  "role", "evaluatorAssigned", "passwordHash", "proofUrls", "uploadToken",
+  "createdAt", "updatedAt"
 ) VALUES
   ( 'coord-sv3824', 'COORD-SV3824', 'SV Coordinator', 'sv3824@srmist.edu.in',
     0, 0, 0, 'COORDINATOR', true,
     'b17e5a9f7d1566f1949eebd624d974cc:de322b42457c7d8d68860864780b4299f52c81bcc1ca8bccf64dc37fbb6f94ccefcdf07045b373d3f632aed5d6f28f08813bc49bb0cb2c2797dc26ada94f23de',
-    '[]', gen_random_uuid()::text ),
+    '[]', gen_random_uuid()::text,
+    now(), now() ),
   ( 'coord-faculty-01', 'COORD-FACULTY-01', 'Faculty Coordinator', 'coordinator@srmist.edu.in',
     0, 0, 0, 'COORDINATOR', true,
     '9ffd9bd5d3e609531beb5cd7d630ad9c:94e2a72df6e232a93d3ddc6b1ed7333a4c33a61942e3a36b2641ba3f612b5979145ffa48bd4a123859ead45930be7ea544fe1e8adff4ef4913e365247be60466',
-    '[]', gen_random_uuid()::text )
+    '[]', gen_random_uuid()::text,
+    now(), now() )
 ON CONFLICT ("email") DO UPDATE
   SET "role" = EXCLUDED."role",
       "evaluatorAssigned" = EXCLUDED."evaluatorAssigned",
-      "passwordHash" = EXCLUDED."passwordHash";
+      "passwordHash" = EXCLUDED."passwordHash",
+      "updatedAt" = now();
