@@ -216,7 +216,7 @@ export function StudentDetailModal({
       <div className="glass-strong my-6 w-full max-w-4xl animate-rise rounded-3xl">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center gap-3 rounded-t-3xl px-5 py-4">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(262_95%_68%)] to-[hsl(320_85%_60%)] text-sm font-bold text-white shadow-[0_2px_10px_-2px_hsl(275_90%_60%/0.6)]">
             <UserRound className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
@@ -268,7 +268,7 @@ export function StudentDetailModal({
                   </div>
                   <div className="glass-inset overflow-hidden rounded-xl">
                     <table className="w-full text-sm">
-                      <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <thead className="glass-inset text-left text-xs uppercase tracking-[0.07em] text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">Field</th>
                           <th className="px-3 py-2 font-medium">Submitted</th>
@@ -394,7 +394,7 @@ export function StudentDetailModal({
                 <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                   Score entry (out of 100)
                 </h3>
-                <div className="glass-inset rounded-xl p-4">
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {SCORE_FIELDS.map((f) => (
                       <div key={f.key} className="space-y-1">

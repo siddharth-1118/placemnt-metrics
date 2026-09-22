@@ -43,10 +43,10 @@ const config: Config = {
         "2xl": "calc(var(--radius) + 10px)",
       },
       boxShadow: {
-        card: "inset 0 1px 0 hsl(0 0% 100% / 0.7), 0 8px 32px -8px hsl(230 40% 20% / 0.12)",
+        card: "inset 0 1px 0 hsl(0 0% 100% / 0.1), 0 12px 40px -8px hsl(250 60% 4% / 0.6)",
         "card-hover":
-          "inset 0 1px 0 hsl(0 0% 100% / 0.8), 0 20px 48px -12px hsl(230 40% 20% / 0.2)",
-        strong: "0 24px 64px -16px hsl(230 40% 20% / 0.22)",
+          "inset 0 1px 0 hsl(0 0% 100% / 0.14), 0 24px 56px -12px hsl(265 90% 30% / 0.55)",
+        strong: "0 32px 80px -20px hsl(255 70% 3% / 0.8)",
       },
       keyframes: {
         rise: {

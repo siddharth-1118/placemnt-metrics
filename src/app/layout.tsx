@@ -34,7 +34,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <header className="sticky top-0 z-40 px-3 pt-3 sm:px-5">
           <div className="glass-strong mx-auto flex h-14 max-w-6xl items-center justify-between rounded-2xl px-3 sm:px-4">
             <Link href="/" className="group flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[hsl(258_75%_62%)] text-primary-foreground shadow-[0_2px_8px_-2px_hsl(245_65%_40%/0.5)] transition-transform duration-300 group-hover:rotate-[-6deg]">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[hsl(262_95%_68%)] via-[hsl(258_90%_62%)] to-[hsl(320_85%_60%)] text-white shadow-[0_2px_14px_-2px_hsl(275_90%_60%/0.6)] transition-transform duration-300 group-hover:rotate-[-6deg]">
                 <GraduationCap className="h-5 w-5" />
               </span>
               <span className="text-[15px] font-semibold tracking-[-0.02em]">

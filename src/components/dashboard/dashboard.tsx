@@ -272,7 +272,21 @@ export function Dashboard() {
                 onClick={() => setSelectedId(s.id)}
                 className="cursor-pointer border-t border-border/60 transition-colors hover:bg-accent/40"
               >
-                <td className="px-3 py-2.5 font-semibold tabular-nums">{s.rank ? `#${s.rank}` : "—"}</td>
+                <td className="px-3 py-2.5 font-semibold tabular-nums">
+                  {s.rank ? (
+                    s.rank === 1 ? (
+                      <span className="text-gradient-gold text-base font-bold drop-shadow-[0_0_10px_hsl(45_100%_60%/0.5)]">#1</span>
+                    ) : s.rank === 2 ? (
+                      <span className="text-[hsl(210_15%_80%)]">#2</span>
+                    ) : s.rank === 3 ? (
+                      <span className="text-[hsl(30_60%_62%)]">#3</span>
+                    ) : (
+                      `#${s.rank}`
+                    )
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-3 py-2.5 font-mono text-xs">{s.registerNumber}</td>
                 <td className="px-3 py-2.5">
                   <div className="font-medium">{s.fullName}</div>

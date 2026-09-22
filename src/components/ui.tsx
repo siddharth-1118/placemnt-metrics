@@ -14,15 +14,15 @@ type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 const buttonVariants: Record<ButtonVariant, string> = {
   default:
-    "bg-primary text-primary-foreground shadow-[0_1px_2px_hsl(245_65%_30%/0.35),inset_0_1px_0_hsl(0_0%_100%/0.25)] hover:shadow-[0_4px_16px_-4px_hsl(245_65%_40%/0.5),inset_0_1px_0_hsl(0_0%_100%/0.25)] hover:brightness-[1.06] active:brightness-95",
-  secondary: "glass-inset text-secondary-foreground hover:bg-accent",
+    "bg-gradient-to-b from-[hsl(260_95%_68%)] to-[hsl(255_85%_58%)] text-white shadow-[0_2px_12px_-2px_hsl(258_90%_60%/0.55),inset_0_1px_0_hsl(0_0%_100%/0.35)] hover:shadow-[0_6px_28px_-4px_hsl(258_95%_62%/0.65),inset_0_1px_0_hsl(0_0%_100%/0.35)] hover:brightness-[1.07] active:brightness-95",
+  secondary: "glass-inset text-secondary-foreground hover:bg-white/10",
   outline:
-    "glass text-secondary-foreground hover:brightness-[1.02] active:brightness-[0.98]",
-  ghost: "hover:bg-accent/60 hover:text-accent-foreground",
+    "glass text-foreground/90 hover:brightness-[1.15] active:brightness-[0.97]",
+  ghost: "hover:bg-white/8 hover:text-foreground",
   destructive:
-    "bg-destructive text-destructive-foreground shadow-[0_1px_2px_hsl(356_72%_35%/0.35),inset_0_1px_0_hsl(0_0%_100%/0.2)] hover:brightness-[1.06] active:brightness-95",
+    "bg-gradient-to-b from-[hsl(352_85%_62%)] to-[hsl(350_80%_52%)] text-white shadow-[0_2px_12px_-2px_hsl(352_80%_55%/0.5),inset_0_1px_0_hsl(0_0%_100%/0.3)] hover:brightness-[1.07] active:brightness-95",
   success:
-    "bg-emerald-600 text-white shadow-[0_1px_2px_hsl(160_84%_30%/0.35),inset_0_1px_0_hsl(0_0%_100%/0.25)] hover:bg-emerald-500 active:brightness-95",
+    "bg-gradient-to-b from-[hsl(160_85%_46%)] to-[hsl(158_80%_38%)] text-white shadow-[0_2px_12px_-2px_hsl(160_84%_40%/0.5),inset_0_1px_0_hsl(0_0%_100%/0.3)] hover:brightness-[1.07] active:brightness-95",
 };
 
 const buttonSizes: Record<ButtonSize, string> = {
@@ -62,7 +62,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
       <input
         ref={ref}
         className={cn(
-          "glass-inset flex h-9.5 w-full rounded-[calc(var(--radius)-6px)] border-0 px-3 py-1 text-sm shadow-none outline-none transition duration-200 placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:bg-card/80 disabled:cursor-not-allowed disabled:opacity-50",
+          "glass-inset flex h-9.5 w-full rounded-[calc(var(--radius)-6px)] border-0 px-3 py-1 text-sm text-foreground shadow-none outline-none transition duration-200 placeholder:text-muted-foreground/60 focus-visible:bg-white/[0.07] focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
         {...props}
@@ -77,7 +77,7 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
   return (
     <label
       className={cn(
-        "text-[13px] font-medium tracking-[-0.01em] text-foreground/90",
+        "text-[13px] font-medium tracking-[-0.01em] text-foreground/80",
         className
       )}
       {...props}
@@ -95,12 +95,12 @@ export function Badge({
   variant?: "default" | "secondary" | "outline" | "success" | "warning" | "destructive";
 }) {
   const variants = {
-    default: "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20",
+    default: "bg-primary/15 text-[hsl(258_100%_82%)] ring-1 ring-inset ring-primary/35",
     secondary: "glass-inset text-muted-foreground",
-    outline: "ring-1 ring-inset ring-border text-foreground",
-    success: "bg-emerald-500/12 text-emerald-700 ring-1 ring-inset ring-emerald-600/25",
-    warning: "bg-amber-500/14 text-amber-700 ring-1 ring-inset ring-amber-600/25",
-    destructive: "bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/25",
+    outline: "ring-1 ring-inset ring-white/15 text-foreground/90",
+    success: "bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-400/30",
+    warning: "bg-amber-500/15 text-amber-300 ring-1 ring-inset ring-amber-400/30",
+    destructive: "bg-rose-500/15 text-rose-300 ring-1 ring-inset ring-rose-400/30",
   } as const;
   return (
     <span
