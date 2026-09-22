@@ -12,7 +12,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:use": "tsx scripts/switch-db.ts",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "node scripts/prepare-prisma.js && prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
