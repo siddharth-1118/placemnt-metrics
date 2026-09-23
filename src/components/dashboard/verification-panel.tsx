@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ExternalLink, FileText, X } from "lucide-react";
+import { Check, ExternalLink, FileText, Trash2, X } from "lucide-react";
 import { Badge, Button, Card, CardContent } from "@/components/ui";
 import { docCategoryLabel, linkCategoryLabel } from "@/lib/categories";
 import type { DocumentDto, ProjectLinkDto } from "@/lib/types";
@@ -35,6 +35,15 @@ async function reviewApi(
   }
 }
 
+async function deleteApi(kind: "document" | "link", id: string) {
+  const url = kind === "document" ? `/api/documents?id=${encodeURIComponent(id)}` : `/api/project-links?id=${encodeURIComponent(id)}`;
+  const res = await fetch(url, { method: "DELETE" });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error(b?.error ?? "Delete failed");
+  }
+}
+
 /**
  * Evaluator panel: every student-uploaded document (viewable inline) and
  * project link with per-item verify / reject actions.
@@ -50,23 +59,39 @@ export function VerificationPanel({
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [openDocId, setOpenDocId] = useState<string | null>(null);async function act(
-  kind: "document" | "link",
-  id: string,
-  status: "VERIFIED" | "REJECTED",
-  note?: string
-) {
-  setError(null);
-  setBusyId(id);
-  try {
-    await reviewApi(kind, id, status, note);
-    onChanged?.();
-  } catch (e) {
-    setError((e as Error).message);
-  } finally {
-    setBusyId(null);
+  const [openDocId, setOpenDocId] = useState<string | null>(null);
+
+  async function act(
+    kind: "document" | "link",
+    id: string,
+    status: "VERIFIED" | "REJECTED",
+    note?: string
+  ) {
+    setError(null);
+    setBusyId(id);
+    try {
+      await reviewApi(kind, id, status, note);
+      onChanged?.();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
   }
-}
+
+  async function remove(kind: "document" | "link", id: string, name: string) {
+    if (!window.confirm(`Delete “${name}”? The student will be notified to re-upload it.`)) return;
+    setError(null);
+    setBusyId(id);
+    try {
+      await deleteApi(kind, id);
+      onChanged?.();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const pendingDocs = documents.filter((d) => d.status === "PENDING").length;
   const pendingLinks = links.filter((l) => l.status === "PENDING").length;
@@ -141,6 +166,16 @@ export function VerificationPanel({
                       >
                         <X className="h-4 w-4" />
                       </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="h-8 w-8"
+                        title="Delete — student must re-upload"
+                        disabled={busyId === d.id}
+                        onClick={() => remove("document", d.id, d.note || d.fileName)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                   {openDocId === d.id && (
@@ -191,6 +226,16 @@ export function VerificationPanel({
                       onClick={() => act("link", l.id, "REJECTED")}
                     >
                       <X className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      title="Delete — student must re-add"
+                      disabled={busyId === l.id}
+                      onClick={() => remove("link", l.id, l.label)}
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>

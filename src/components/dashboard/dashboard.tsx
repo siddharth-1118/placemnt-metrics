@@ -175,7 +175,7 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: "Students", value: stats.total, icon: Users },
           { label: "Verified", value: stats.verified, icon: Award },
@@ -228,8 +228,53 @@ export function Dashboard() {
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
       )}
 
-      {/* Table */}
-      <div className="glass overflow-x-auto rounded-2xl scrollbar-thin">
+      {/* Mobile: tap-to-open cards (table needs too much width on phones) */}
+      <div className="space-y-2.5 md:hidden">
+        {loading && (
+          <Card>
+            <CardContent className="flex items-center gap-2 pt-5 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading submissions…
+            </CardContent>
+          </Card>
+        )}
+        {!loading && filtered.length === 0 && (
+          <Card>
+            <CardContent className="pt-5 text-sm text-muted-foreground">No students match the current filters.</CardContent>
+          </Card>
+        )}
+        {filtered.map((s) => (
+          <Card
+            key={s.id}
+            className="glass-hover cursor-pointer"
+            onClick={() => setSelectedId(s.id)}
+          >
+            <CardContent className="space-y-2 pt-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold tabular-nums text-gradient-gold">{s.rank ? `#${s.rank}` : "—"}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{s.fullName}</p>
+                  <p className="truncate font-mono text-[11px] text-muted-foreground">{s.registerNumber}</p>
+                </div>
+                <Badge variant={s.status === "VERIFIED" ? "success" : "warning"}>{s.status}</Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-[11px] text-muted-foreground">
+                <span>CGPA <b className="tnum text-foreground">{s.cgpa.toFixed(2)}</b></span>
+                <span>Docs <b className="tnum text-foreground">
+                  {(s.documents ?? []).filter((d) => d.status === "VERIFIED").length + (s.projectLinks ?? []).filter((l) => l.status === "VERIFIED").length}
+                  /{(s.documents?.length ?? 0) + (s.projectLinks?.length ?? 0)}</b></span>
+                <span>Score <b className="tnum text-foreground">{s.scores.total.toFixed(1)}</b></span>
+              </div>
+              <div className="space-y-1 text-xs">
+                <SummaryCell s={s} platform="GITHUB" />
+                <SummaryCell s={s} platform="LEETCODE" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Table (md+ — has room for the full column set) */}
+      <div className="glass hidden overflow-x-auto rounded-2xl scrollbar-thin md:block">
         <table className="w-full min-w-[1080px] text-sm">
           <thead className="text-left text-xs uppercase tracking-[0.07em] text-muted-foreground/90">
             <tr>

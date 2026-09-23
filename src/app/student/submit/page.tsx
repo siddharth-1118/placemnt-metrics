@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 export default function StudentSubmitPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
+    <div className="mx-auto w-full max-w-3xl px-3 py-8 sm:px-6 sm:py-14">
       <div className="animate-rise">
         <h1 className="text-3xl font-bold tracking-[-0.025em] sm:text-4xl">
           Your profile, <span className="text-gradient">verified</span>

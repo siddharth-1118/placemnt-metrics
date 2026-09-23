@@ -212,8 +212,8 @@ export function StudentDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[hsl(230_35%_14%/0.45)] p-4 backdrop-blur-[6px]" role="dialog" aria-modal="true">
-      <div className="glass-strong my-6 w-full max-w-4xl animate-rise rounded-3xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[hsl(230_35%_14%/0.45)] p-2 backdrop-blur-[6px] sm:p-4" role="dialog" aria-modal="true">
+      <div className="glass-strong my-2 w-full max-w-4xl animate-rise rounded-2xl sm:my-6 sm:rounded-3xl">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center gap-3 rounded-t-3xl px-5 py-4">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(262_95%_68%)] to-[hsl(320_85%_60%)] text-sm font-bold text-white shadow-[0_2px_10px_-2px_hsl(275_90%_60%/0.6)]">
@@ -240,7 +240,7 @@ export function StudentDetailModal({
         </div>
 
         <div className="h-px w-full bg-gradient-to-r from-transparent via-border to-transparent" />
-        <div className="space-y-6 p-5">
+        <div className="space-y-6 p-3 sm:p-5">
           {error && (
             <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               <AlertTriangle className="h-4 w-4" /> {error}
@@ -266,8 +266,8 @@ export function StudentDetailModal({
                       Re-scrape
                     </Button>
                   </div>
-                  <div className="glass-inset overflow-hidden rounded-xl">
-                    <table className="w-full text-sm">
+                  <div className="glass-inset overflow-x-auto rounded-xl scrollbar-thin">
+                    <table className="w-full min-w-[520px] text-sm">
                       <thead className="glass-inset text-left text-xs uppercase tracking-[0.07em] text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">Field</th>
@@ -417,26 +417,28 @@ export function StudentDetailModal({
                     ))}
                   </div>
 
-                  <div className="mt-4 flex flex-wrap items-center gap-3 border-t pt-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">Total</span>
-                      <span className="text-2xl font-bold tabular-nums">{total.toFixed(1)}</span>
-                      <span className="text-sm text-muted-foreground">/ 100</span>
+                  <div className="mt-4 space-y-3 border-t pt-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Total</span>
+                        <span className="text-2xl font-bold tabular-nums">{total.toFixed(1)}</span>
+                        <span className="text-sm text-muted-foreground">/ 100</span>
+                      </div>
+                      {student.rank !== null && (
+                        <Badge variant="secondary">Rank #{student.rank}</Badge>
+                      )}
                     </div>
-                    {student.rank !== null && (
-                      <Badge variant="secondary">Rank #{student.rank}</Badge>
-                    )}
-                    <div className="ml-auto flex flex-wrap items-center gap-2">
-                      <Input
-                        placeholder="Coordinator note (optional)"
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        className="h-9 w-full sm:w-64"
-                      />
-                      <Button variant="outline" onClick={() => save(false)} disabled={saving}>
+                    <Input
+                      placeholder="Coordinator note (optional)"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      className="h-9 w-full"
+                    />
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Button variant="outline" className="w-full sm:w-auto" onClick={() => save(false)} disabled={saving}>
                         Save as pending
                       </Button>
-                      <Button onClick={() => save(true)} disabled={saving}>
+                      <Button className="w-full sm:w-auto" onClick={() => save(true)} disabled={saving}>
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                         Save &amp; verify
                       </Button>

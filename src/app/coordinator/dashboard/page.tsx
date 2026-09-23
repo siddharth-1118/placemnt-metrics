@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { Dashboard } from "@/components/dashboard/dashboard";
+import { ResetRequestsPanel } from "@/components/dashboard/reset-requests";
 
 export const metadata: Metadata = {
   title: "Coordinator dashboard",
@@ -14,7 +15,7 @@ export default async function CoordinatorDashboardPage() {
   if (user.role !== "COORDINATOR" || !user.evaluatorAssigned) redirect("/my-submission");
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
+    <div className="mx-auto w-full max-w-7xl px-3 py-8 sm:px-6 sm:py-12">
       <div className="animate-rise mb-7">
         <h1 className="text-3xl font-bold tracking-[-0.025em] sm:text-4xl">
           Evaluation <span className="text-gradient">dashboard</span>
@@ -25,6 +26,9 @@ export default async function CoordinatorDashboardPage() {
         </p>
       </div>
       <Dashboard />
+      <div className="mt-8">
+        <ResetRequestsPanel />
+      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { toDto } from "@/lib/dto";
 import { StudentSummaryCard, ScrapeCards } from "@/components/dashboard/read-only-cards";
 import { DocumentUploader } from "@/components/student/document-uploader";
 import { LinkManager } from "@/components/student/link-manager";
+import { NotificationBell } from "@/components/student/notifications";
 import { Button } from "@/components/ui";
 
 export const metadata: Metadata = {
@@ -26,7 +27,7 @@ export default async function MySubmissionPage() {
   const student = toDto(row);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-10 sm:px-6 sm:py-12">
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-3 py-8 sm:px-6 sm:py-12">
       <div className="animate-rise flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-[-0.025em] sm:text-4xl">
@@ -48,6 +49,9 @@ export default async function MySubmissionPage() {
           </Link>
         </div>
       </div>
+
+      {/* Coordinator actions (document removed, password reset, …) surface here. */}
+      <NotificationBell />
 
       <StudentSummaryCard s={student} />
       <ScrapeCards s={student} />

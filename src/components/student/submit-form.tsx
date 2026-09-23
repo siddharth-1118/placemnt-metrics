@@ -271,8 +271,8 @@ export function SubmitForm() {
         </div>
       </section>
 
-      <div className="flex items-center gap-3 border-t pt-4">
-        <Button type="submit" disabled={submitting}>
+      <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:gap-3">
+        <Button type="submit" className="w-full sm:w-auto" disabled={submitting}>
           {submitting ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" /> Submitting…

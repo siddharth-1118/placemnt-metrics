@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { docToDto } from "@/lib/dto";
-import { putDocument } from "@/lib/storage";
+import { putDocument, deleteDocument } from "@/lib/storage";
+import { notify } from "@/lib/notify";
 import {
   DOC_CATEGORY_KEYS,
   UPLOAD_MAX_BYTES,
@@ -68,11 +69,13 @@ export async function POST(req: Request) {
 
   // Storage write FIRST (Supabase when configured, disk otherwise). If storage
   // is misconfigured and even the disk fallback fails, we fail the request —
-  // no orphan Document rows without a backing file.
-  // The document id is needed as the storage key, so create a temp id first:
-  // reuse Prisma's cuid by creating the row inside a transaction AFTER storage
-  // succeeds is not possible (we need the id), so we generate the id here.
-  const docId = (await prisma.document.create({ data: { studentId: student.id, category, fileName: "pending", mimeType: mime, sizeBytes: file.size } })).id;
+  // no orphan Document rows without a backing file. The document id doubles
+  // as the storage key, so the row is created first and rolled back on failure.
+  const docId = (
+    await prisma.document.create({
+      data: { studentId: student.id, category, fileName: "pending", mimeType: mime, sizeBytes: file.size },
+    })
+  ).id;
   try {
     await putDocument(student.id, docId, buffer, mime);
     const doc = await prisma.document.update({
@@ -87,4 +90,55 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * DELETE /api/documents?id=<documentId>
+ *
+ *  - Students: may remove their OWN documents only while still PENDING.
+ *    Once a coordinator verifies (or rejects) a document it is locked —
+ *    re-uploads must go through the coordinator.
+ *  - Coordinators (assigned evaluators): may delete ANY document, verified or
+ *    not — e.g. an illegible marksheet. The student receives an in-app
+ *    notification so they know to re-upload.
+ */
+export async function DELETE(req: Request) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  }
+
+  const id = new URL(req.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const doc = await prisma.document.findUnique({ where: { id } });
+  if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
+
+  const isEvaluator = user.role === "COORDINATOR" && user.evaluatorAssigned;
+
+  if (!isEvaluator) {
+    if (doc.studentId !== user.id) {
+      return NextResponse.json({ error: "Not your document" }, { status: 403 });
+    }
+    if (doc.status !== "PENDING") {
+      return NextResponse.json(
+        { error: "This document was already reviewed and is locked — ask a coordinator if it must be replaced" },
+        { status: 403 }
+      );
+    }
+  }
+
+  await prisma.document.delete({ where: { id } });
+  await deleteDocument(doc.studentId, doc.id);
+
+  if (isEvaluator && doc.studentId !== user.id) {
+    await notify({
+      studentId: doc.studentId,
+      title: "Document removed by coordinator",
+      body: `Your ${doc.category === "SHL" ? "SHL document" : doc.category.toLowerCase()} “${doc.note || doc.fileName}” was removed by a coordinator. Please upload it again.`,
+      kind: "WARNING",
+    });
+  }
+
+  return NextResponse.json({ ok: true });
 }

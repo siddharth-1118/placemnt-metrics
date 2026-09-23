@@ -172,3 +172,40 @@ SELECT "email", "role", "evaluatorAssigned" AS assigned
 FROM "Student"
 WHERE "role" = 'COORDINATOR'
 ORDER BY "email";
+
+-- =====================================================================
+-- Additions (v2): PasswordResetRequest + Notification tables.
+-- These use CREATE TABLE IF NOT EXISTS, so they are safe to run on a
+-- database that already has the four base tables above.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "PasswordResetRequest" (
+    "id" TEXT NOT NULL,
+    "fullName" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "registerNumber" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "resolvedById" TEXT,
+    "resolvedAt" TIMESTAMP(3),
+    "note" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PasswordResetRequest_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "Notification" (
+    "id" TEXT NOT NULL,
+    "studentId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+    "kind" TEXT NOT NULL DEFAULT 'INFO',
+    "readAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Notification_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "PasswordResetRequest_status_idx" ON "PasswordResetRequest"("status");
+CREATE INDEX IF NOT EXISTS "PasswordResetRequest_email_idx" ON "PasswordResetRequest"("email");
+CREATE INDEX IF NOT EXISTS "Notification_studentId_readAt_idx" ON "Notification"("studentId", "readAt");
+
+DO $$ BEGIN
+  ALTER TABLE "Notification" ADD CONSTRAINT "Notification_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;

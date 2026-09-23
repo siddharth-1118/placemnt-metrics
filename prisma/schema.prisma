@@ -70,7 +70,8 @@ model Student {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  scrapes ScrapeResult[]
+  scrapes       ScrapeResult[]
+  notifications Notification[]
 
   @@index([status])
   @@index([totalScore])
@@ -125,6 +126,44 @@ model Document {
 
   @@index([studentId])
   @@index([category])
+}
+
+/// A student's request to reset their password. Students submit name, email
+/// and register number from the login page; a coordinator resolves it by
+/// issuing a new temporary password (shown once to the coordinator who
+/// hands it over in person / via college email).
+model PasswordResetRequest {
+  id             String   @id @default(cuid())
+  /// Claimed identity — verified by the coordinator before acting.
+  fullName       String
+  email          String
+  registerNumber String
+  /// PENDING | RESOLVED | DENIED
+  status         String   @default("PENDING")
+  /// Set when a coordinator sets a new password for the matched account.
+  resolvedById   String?
+  resolvedAt     DateTime?
+  note           String?
+  createdAt      DateTime @default(now())
+
+  @@index([status])
+  @@index([email])
+}
+
+/// In-app notification for a student (document removed, password reset, …).
+model Notification {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  title     String
+  body      String
+  /// INFO | WARNING
+  kind      String   @default("INFO")
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([studentId, readAt])
 }
 
 /// A project / portfolio link. Students may add as many as they want.

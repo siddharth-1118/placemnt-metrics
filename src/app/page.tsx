@@ -27,14 +27,14 @@ const features = [
 
 export default function HomePage() {
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-16 pt-12 sm:px-6 sm:pt-16">
+    <div className="mx-auto max-w-6xl px-4 pb-14 pt-8 sm:px-6 sm:pt-16">
       {/* Hero */}
       <section className="relative animate-rise">
-        <Badge variant="default" className="mb-6 px-3 py-1">
+        <Badge variant="default" className="mb-5 px-3 py-1">
           <Github className="h-3 w-3" />
           Verified coding profiles · AO1 Batch
         </Badge>
-        <h1 className="max-w-3xl text-[2.75rem] font-bold leading-[1.04] tracking-[-0.035em] sm:text-6xl">
+        <h1 className="max-w-3xl text-[2.15rem] font-bold leading-[1.06] tracking-[-0.035em] sm:text-6xl">
           Marks tell half the story.
           <span className="text-gradient block drop-shadow-[0_0_28px_hsl(265_95%_60%/0.35)]">
             We verify the other half.
@@ -46,17 +46,17 @@ export default function HomePage() {
           batch on a transparent 100-mark rubric.
         </p>
 
-        <div className="mt-9 flex flex-wrap items-center gap-3">
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <Link
             href="/student/submit"
-            className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[hsl(262_95%_68%)] to-[hsl(255_85%_57%)] px-6 py-3 text-sm font-semibold text-white shadow-[0_4px_24px_-4px_hsl(258_95%_60%/0.7),inset_0_1px_0_hsl(0_0%_100%/0.35)] transition-all duration-200 hover:shadow-[0_10px_40px_-6px_hsl(270_95%_62%/0.8),inset_0_1px_0_hsl(0_0%_100%/0.35)] active:scale-[0.98]"
+            className="group inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[hsl(262_95%_68%)] to-[hsl(255_85%_57%)] px-6 py-3 text-sm font-semibold text-white shadow-[0_4px_24px_-4px_hsl(258_95%_60%/0.7),inset_0_1px_0_hsl(0_0%_100%/0.35)] transition-all duration-200 hover:shadow-[0_10px_40px_-6px_hsl(270_95%_62%/0.8),inset_0_1px_0_hsl(0_0%_100%/0.35)] active:scale-[0.98]"
           >
             Submit your profile
             <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
           </Link>
           <Link
             href="/coordinator/dashboard"
-            className="glass inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-foreground/90 transition-all duration-200 hover:brightness-[1.2] active:scale-[0.98]"
+            className="glass inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-foreground/90 transition-all duration-200 hover:brightness-[1.2] active:scale-[0.98]"
           >
             <LayoutDashboard className="h-4 w-4 opacity-70" />
             Coordinator dashboard

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function LoginPage() {
   return (
-    <div className="mx-auto flex max-w-md flex-col justify-center px-4 py-16 sm:py-24">
+    <div className="mx-auto flex w-full max-w-md flex-col justify-center px-3 py-10 sm:px-4 sm:py-24">
       <Card className="glass-strong animate-rise rounded-3xl p-1">
         <CardHeader className="p-6 pb-4">
           <span className="glass-inset mb-3 flex h-11 w-11 items-center justify-center rounded-2xl">
