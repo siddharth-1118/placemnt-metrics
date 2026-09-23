@@ -8,6 +8,7 @@ import { StudentSummaryCard, ScrapeCards } from "@/components/dashboard/read-onl
 import { DocumentUploader } from "@/components/student/document-uploader";
 import { LinkManager } from "@/components/student/link-manager";
 import { NotificationBell } from "@/components/student/notifications";
+import { ChangePasswordCard } from "@/components/student/change-password";
 import { Button } from "@/components/ui";
 
 export const metadata: Metadata = {
@@ -72,6 +73,13 @@ export default async function MySubmissionPage() {
           <h2 className="text-lg font-semibold tracking-[-0.015em]">Project links</h2>
         </div>
         <LinkManager />
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-[-0.015em]">Account security</h2>
+        </div>
+        <ChangePasswordCard />
       </section>
     </div>
   );
