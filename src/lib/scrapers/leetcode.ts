@@ -10,7 +10,7 @@ const GQL = "https://leetcode.com/graphql";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
-async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+async function gqlOnce<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const res = await fetch(GQL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": UA, Referer: "https://leetcode.com" },
@@ -24,6 +24,21 @@ async function gql<T>(query: string, variables: Record<string, unknown>): Promis
   if (json.errors?.length) throw new Error(`LeetCode API error: ${json.errors[0]!.message}`);
   if (!json.data) throw new Error("LeetCode API returned no data");
   return json.data;
+}
+
+/** Retry once on transient failures (network blips, 429, 5xx). */
+async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  try {
+    return await gqlOnce<T>(query, variables);
+  } catch (err) {
+    const msg = (err as Error).message ?? "";
+    const transient =
+      msg.includes("429") || msg.includes("rate limit") || /LeetCode API error 5\d\d/.test(msg) ||
+      msg.includes("fetch failed");
+    if (!transient) throw err;
+    await new Promise((r) => setTimeout(r, 1500));
+    return gqlOnce<T>(query, variables);
+  }
 }
 
 interface ProfileData {
@@ -84,7 +99,9 @@ export async function scrapeLeetcode(username: string): Promise<LeetcodeScrapedD
   );
   if (!profile.matchedUser) throw new Error(`LeetCode profile not found: ${username}`);
 
-  const [solved, contest, recent] = await Promise.all([
+  // Secondary queries are best-effort: a failure in any of them must not
+  // invalidate the profile scrape — we degrade to zero/null fields instead.
+  const [solvedRes, contestRes, recentRes] = await Promise.allSettled([
     gql<SolvedData>(
       `query userProblemsSolved($userSlug: String!) {
         matchedUser(username: $userSlug) {
@@ -119,6 +136,19 @@ export async function scrapeLeetcode(username: string): Promise<LeetcodeScrapedD
       { userSlug: username }
     ),
   ]);
+
+  const solved: SolvedData =
+    solvedRes.status === "fulfilled"
+      ? solvedRes.value
+      : { matchedUser: null };
+  const contest: ContestData =
+    contestRes.status === "fulfilled"
+      ? contestRes.value
+      : { userContestRanking: null };
+  const recent: RecentData =
+    recentRes.status === "fulfilled"
+      ? recentRes.value
+      : { recentAcSubmissionList: [] };
 
   const counts = solved.matchedUser?.submitStatsGlobal.acSubmissionNum ?? [];
   const byDifficulty = (d: string) => counts.find((c) => c.difficulty === d)?.count ?? 0;
