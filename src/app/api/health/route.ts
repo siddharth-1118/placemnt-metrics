@@ -18,6 +18,14 @@ export async function GET() {
     storage?: { ok: boolean; driver: string; bucket: string };
   } = {};
 
+  // Build stamp — compare against the latest commit on GitHub to spot a
+  // stale deployment (e.g. "academic marks not calculating" is usually just
+  // an old build still serving traffic).
+  const version =
+    process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ??
+    process.env.APP_VERSION ??
+    "local-dev";
+
   // 1. Database connectivity + schema presence.
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -47,5 +55,5 @@ export async function GET() {
   };
 
   const ok = checks.db?.ok === true && checks.tables?.ok === true;
-  return NextResponse.json({ ok, checks }, { status: 200 });
+  return NextResponse.json({ ok, version, checks }, { status: 200 });
 }

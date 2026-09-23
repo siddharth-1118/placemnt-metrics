@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Award, ChevronsUpDown, Code2, FileCheck2, Github, Loader2, RefreshCw, Search, Users,
+  Award, Calculator, ChevronsUpDown, Code2, FileCheck2, Github, Loader2, RefreshCw, Search, Users,
 } from "lucide-react";
 import { Badge, Button, Card, CardContent, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
@@ -78,6 +78,25 @@ export function Dashboard() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [recalcBusy, setRecalcBusy] = useState(false);
+  const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
+
+  async function recalculate() {
+    setRecalcBusy(true);
+    setRecalcMsg(null);
+    try {
+      const res = await fetch("/api/students/recalculate", { method: "POST" });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error ?? "Recalculate failed");
+      setRecalcMsg(body.message ?? "Done.");
+      await load();
+    } catch (e) {
+      setRecalcMsg((e as Error).message);
+    } finally {
+      setRecalcBusy(false);
+      setTimeout(() => setRecalcMsg(null), 6000);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -222,7 +241,22 @@ export function Dashboard() {
         <Button variant="outline" onClick={load}>
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
+        <Button
+          variant="outline"
+          onClick={recalculate}
+          disabled={recalcBusy}
+          title="Rebuild academic scores and totals from stored marks (fixes rows from older builds)"
+        >
+          {recalcBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
+          Recalculate scores
+        </Button>
       </div>
+
+      {recalcMsg && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-600">
+          {recalcMsg}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
