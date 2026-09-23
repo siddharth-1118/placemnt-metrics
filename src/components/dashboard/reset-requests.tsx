@@ -172,7 +172,10 @@ export function ResetRequestsPanel() {
         </div>
 
         <div className="flex items-center justify-between pt-1">
-          <Label className="text-xs text-muted-foreground">Requests from students</Label>
+          <Label className="text-xs text-muted-foreground">
+            Requests from students
+            <span className="ml-2 font-normal">(failed self-reset attempts show as “denied” for audit)</span>
+          </Label>
         </div>
 
         {requests.length === 0 ? (
@@ -190,7 +193,11 @@ export function ResetRequestsPanel() {
                       <AlertTriangle className="mr-1 h-3 w-3" /> details mismatch
                     </Badge>
                   )}
-                  {r.status === "RESOLVED" && <Badge variant="success">resolved</Badge>}
+                  {r.status === "RESOLVED" && (
+                    <Badge variant="success">
+                      {r.note?.includes("self-reset") ? "self-reset" : "resolved"}
+                    </Badge>
+                  )}
                   {r.status === "DENIED" && <Badge variant="destructive">denied</Badge>}
                 </div>
                 {r.accountName && r.accountName !== r.fullName && (
