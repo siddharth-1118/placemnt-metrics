@@ -209,3 +209,7 @@ CREATE INDEX IF NOT EXISTS "Notification_studentId_readAt_idx" ON "Notification"
 DO $$ BEGIN
   ALTER TABLE "Notification" ADD CONSTRAINT "Notification_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- v3: claimable password flow (old hash cleared on approval; next sign-in
+-- with email + any password claims it as the permanent password)
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "claimablePassword" BOOLEAN NOT NULL DEFAULT false;

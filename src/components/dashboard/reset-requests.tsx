@@ -15,49 +15,25 @@ interface ResetRequestDto {
   resolvedAt: string | null;
   matchesAccount: boolean;
   accountName: string | null;
+  awaitingClaim: boolean;
 }
 
 /**
- * Coordinator panel for student password-reset requests. Resolve issues a
- * fresh temporary password — shown ONCE so the coordinator can hand it to
- * the student through a verified channel.
+ * Coordinator panel for password resets. Approving a request (or using the
+ * direct tool) deletes the student's old password — the student then signs in
+ * with their registered email and ANY password they choose, which becomes
+ * their permanent password. The coordinator never handles passwords.
  */
 export function ResetRequestsPanel() {
   const [requests, setRequests] = useState<ResetRequestDto[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [issued, setIssued] = useState<{ id: string; password: string } | null>(null);
 
-  // Direct access reset (no request needed)
+  // Direct approval (no request needed)
   const [directEmail, setDirectEmail] = useState("");
   const [directBusy, setDirectBusy] = useState(false);
-  const [directResult, setDirectResult] = useState<{ name: string; password: string } | null>(null);
+  const [directDone, setDirectDone] = useState<string | null>(null);
   const [directError, setDirectError] = useState<string | null>(null);
-
-  async function directReset() {
-    setDirectError(null);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(directEmail.trim())) {
-      setDirectError("Enter the student's registered email");
-      return;
-    }
-    if (!window.confirm(`Issue a new password for ${directEmail.trim()}? The student should be present or reachable to receive it.`)) return;
-    setDirectBusy(true);
-    try {
-      const res = await fetch("/api/auth/forgot/direct", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: directEmail.trim() }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error ?? "Reset failed");
-      setDirectResult({ name: body.account.fullName, password: body.tempPassword });
-      setDirectEmail("");
-    } catch (e) {
-      setDirectError((e as Error).message);
-    } finally {
-      setDirectBusy(false);
-    }
-  }
 
   const load = useCallback(async () => {
     try {
@@ -77,8 +53,17 @@ export function ResetRequestsPanel() {
     load();
   }, [load]);
 
-  async function act(id: string, action: "resolve" | "deny") {
+  async function act(id: string, action: "approve" | "deny") {
     setError(null);
+    const r = requests?.find((x) => x.id === id);
+    if (
+      action === "approve" &&
+      !window.confirm(
+        `Approve password reset for ${r?.fullName ?? "this student"}?\n\nTheir old password will be cleared. They then sign in with their email + any password they choose — that becomes their permanent password.`
+      )
+    ) {
+      return;
+    }
     setBusyId(id);
     try {
       const res = await fetch("/api/auth/forgot/manage", {
@@ -88,14 +73,43 @@ export function ResetRequestsPanel() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error ?? "Action failed");
-      if (action === "resolve") {
-        setIssued({ id, password: body.tempPassword });
-      }
       await load();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function directApprove() {
+    setDirectError(null);
+    setDirectDone(null);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(directEmail.trim())) {
+      setDirectError("Enter the student's registered email");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Clear the password for ${directEmail.trim()}?\n\nThey then sign in with their email + any password they choose — that becomes their permanent password.`
+      )
+    ) {
+      return;
+    }
+    setDirectBusy(true);
+    try {
+      const res = await fetch("/api/auth/forgot/direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: directEmail.trim() }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error ?? "Reset failed");
+      setDirectDone(body.account.fullName);
+      setDirectEmail("");
+    } catch (e) {
+      setDirectError((e as Error).message);
+    } finally {
+      setDirectBusy(false);
     }
   }
 
@@ -116,10 +130,16 @@ export function ResetRequestsPanel() {
       <CardContent className="space-y-3 pt-5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <KeyRound className="h-4 w-4 text-primary" /> Password reset requests
+            <KeyRound className="h-4 w-4 text-primary" /> Password reset approvals
           </div>
           {pending.length > 0 && <Badge variant="warning">{pending.length} pending</Badge>}
         </div>
+
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          You never touch passwords. Approving <strong>clears the student&apos;s old password</strong>{" "}
+          — their next sign-in with their registered email + <em>any password they choose</em>{" "}
+          stores that as their permanent password.
+        </p>
 
         {error && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -127,25 +147,13 @@ export function ResetRequestsPanel() {
           </div>
         )}
 
-        {issued && (
-          <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm">
-            <p className="font-medium">Temporary password issued</p>
-            <p className="mt-1 break-all font-mono text-xs">{issued.password}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Show this once to the student — they should change it after signing in. It will not
-              be shown again.
-            </p>
-          </div>
-        )}
-
-        {/* Direct access reset — for students who never filed a request */}
+        {/* Direct approval — for students who never filed a request */}
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5">
           <p className="flex items-center gap-1.5 text-sm font-medium">
             <UserRoundSearch className="h-4 w-4 text-primary" /> Reset any account directly
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            For students who lost access and never sent a request — issue a fresh password right
-            here; they&apos;ll also get a portal notification.
+            No request needed — for students who lost access and couldn&apos;t file one.
           </p>
           <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
             <Input
@@ -156,18 +164,17 @@ export function ResetRequestsPanel() {
               className="flex-1"
               aria-label="Account email"
             />
-            <Button onClick={directReset} disabled={directBusy} className="shrink-0">
+            <Button onClick={directApprove} disabled={directBusy} className="shrink-0">
               {directBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-              Issue password
+              Approve reset
             </Button>
           </div>
           {directError && <p className="mt-2 text-xs text-destructive">{directError}</p>}
-          {directResult && (
-            <div className="mt-2.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm">
-              <p className="font-medium">New password for {directResult.name}</p>
-              <p className="mt-1 break-all font-mono text-xs">{directResult.password}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Show it once to the student — it will not be shown again.</p>
-            </div>
+          {directDone && (
+            <p className="mt-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+              Approved for <strong>{directDone}</strong> — they can now sign in with their email +
+              any password they choose.
+            </p>
           )}
         </div>
 
@@ -195,10 +202,13 @@ export function ResetRequestsPanel() {
                   )}
                   {r.status === "RESOLVED" && (
                     <Badge variant="success">
-                      {r.note?.includes("self-reset") ? "self-reset" : "resolved"}
+                      {r.note?.includes("self-reset") ? "self-reset" : "approved"}
                     </Badge>
                   )}
                   {r.status === "DENIED" && <Badge variant="destructive">denied</Badge>}
+                  {r.awaitingClaim && r.status === "RESOLVED" && (
+                    <Badge variant="warning">awaiting claim — student signs in with any password</Badge>
+                  )}
                 </div>
                 {r.accountName && r.accountName !== r.fullName && (
                   <p className="mt-1 text-xs text-muted-foreground">Account name: {r.accountName}</p>
@@ -206,20 +216,11 @@ export function ResetRequestsPanel() {
                 {r.note && <p className="mt-1 text-xs text-muted-foreground">{r.note}</p>}
                 {r.status === "PENDING" && (
                   <div className="mt-2 flex gap-2">
-                    <Button
-                      size="sm"
-                      disabled={busyId === r.id}
-                      onClick={() => act(r.id, "resolve")}
-                    >
+                    <Button size="sm" disabled={busyId === r.id} onClick={() => act(r.id, "approve")}>
                       {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                      Issue new password
+                      Approve
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={busyId === r.id}
-                      onClick={() => act(r.id, "deny")}
-                    >
+                    <Button size="sm" variant="destructive" disabled={busyId === r.id} onClick={() => act(r.id, "deny")}>
                       <X className="h-3.5 w-3.5" /> Deny
                     </Button>
                   </div>

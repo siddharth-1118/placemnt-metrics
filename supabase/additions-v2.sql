@@ -38,6 +38,10 @@ DO $$ BEGIN
   ALTER TABLE "Notification" ADD CONSTRAINT "Notification_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- v3: claimable password flow — the old hash is cleared on coordinator
+-- approval; the student's next sign-in (email + any password) claims it.
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "claimablePassword" BOOLEAN NOT NULL DEFAULT false;
+
 -- Self-check: should return 2 rows
 SELECT 'PasswordResetRequest' AS table_name, count(*) FROM "PasswordResetRequest"
 UNION ALL

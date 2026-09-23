@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireEvaluator } from "@/lib/auth";
-import { hashPassword } from "@/lib/password";
 import { notify } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +20,7 @@ export async function GET() {
   // spot mismatches at a glance.
   const accounts = await prisma.student.findMany({
     where: { email: { in: requests.map((r) => r.email) } },
-    select: { email: true, registerNumber: true, fullName: true },
+    select: { email: true, registerNumber: true, fullName: true, claimablePassword: true },
   });
   const byEmail = new Map(accounts.map((a) => [a.email, a]));
 
@@ -39,6 +38,7 @@ export async function GET() {
         resolvedAt: r.resolvedAt?.toISOString() ?? null,
         matchesAccount: !!account && account.registerNumber === r.registerNumber,
         accountName: account?.fullName ?? null,
+        awaitingClaim: account?.claimablePassword ?? false,
       };
     }),
   });
@@ -46,15 +46,15 @@ export async function GET() {
 
 const resolveSchema = z.object({
   id: z.string().min(1),
-  action: z.enum(["resolve", "deny"]),
-  /** Optional: coordinator-chosen password. A secure temp one is generated when omitted. */
-  newPassword: z.string().min(8, "Password must be at least 8 characters").max(100).optional(),
+  action: z.enum(["approve", "resolve", "deny"]),
 });
 
 /**
- * POST /api/auth/forgot/manage — resolve a request by setting a new password
- * on the matched account (returned ONCE in the response so the coordinator
- * can hand it to the student), or deny it. The student gets a notification.
+ * POST /api/auth/forgot/manage — the coordinator VERIFIES the student's
+ * identity and approves. Approval deletes the old password from the database
+ * (hash cleared, claim flag set) — the student's next sign-in with their
+ * registered email + any password they choose stores that password as their
+ * permanent one. No password is ever generated, set, or sent by anyone.
  */
 export async function POST(req: Request) {
   const { user, error } = await requireEvaluator();
@@ -70,6 +70,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Validation failed" }, { status: 422 });
   }
+  const action = parsed.data.action === "resolve" ? "approve" : parsed.data.action;
 
   const request = await prisma.passwordResetRequest.findUnique({ where: { id: parsed.data.id } });
   if (!request) {
@@ -79,7 +80,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "This request was already handled" }, { status: 409 });
   }
 
-  if (parsed.data.action === "deny") {
+  if (action === "deny") {
     await prisma.passwordResetRequest.update({
       where: { id: request.id },
       data: { status: "DENIED", resolvedById: user.id, resolvedAt: new Date() },
@@ -95,24 +96,29 @@ export async function POST(req: Request) {
     );
   }
 
-  const tempPassword =
-    parsed.data.newPassword ??
-    `SRM-${Math.random().toString(36).slice(2, 8)}${Math.floor(Math.random() * 90 + 10)}!`;
+  // APPROVE: kill the old password. The student claims their new permanent
+  // password at their next sign-in (email + any password).
+  await prisma.$transaction([
+    prisma.student.update({
+      where: { id: account.id },
+      data: { passwordHash: null, claimablePassword: true },
+    }),
+    prisma.passwordResetRequest.update({
+      where: { id: request.id },
+      data: { status: "RESOLVED", resolvedById: user.id, resolvedAt: new Date() },
+    }),
+  ]);
 
-  await prisma.student.update({
-    where: { id: account.id },
-    data: { passwordHash: hashPassword(tempPassword) },
-  });
-  await prisma.passwordResetRequest.update({
-    where: { id: request.id },
-    data: { status: "RESOLVED", resolvedById: user.id, resolvedAt: new Date() },
-  });
   await notify({
     studentId: account.id,
-    title: "Password reset",
-    body: "Your password was reset by a coordinator. Sign in with the new password they gave you.",
+    title: "Password reset approved",
+    body: "Your old password was cleared. Sign in with your registered email and any new password — that password becomes yours permanently.",
     kind: "INFO",
   });
 
-  return NextResponse.json({ ok: true, tempPassword });
+  return NextResponse.json({
+    ok: true,
+    approved: true,
+    message: "Approved. The student signs in with their email + any password they choose — it becomes their permanent password.",
+  });
 }

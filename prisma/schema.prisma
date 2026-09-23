@@ -41,8 +41,13 @@ model Student {
   /// Coordinators: true when assigned to evaluate this batch (scrape & score).
   evaluatorAssigned Boolean  @default(false)
   /// scrypt hash (salt:hash, hex). Students may optionally set one to view
-  /// their own submission; coordinators must have one.
+  /// their own submission; coordinators must have one. NULL after a password
+  /// reset approval — the next sign-in with email + any password claims it.
   passwordHash      String?
+  /// True while the account awaits its password claim: the old hash was
+  /// cleared on coordinator approval, so the next successful email login
+  /// stores whatever password the user typed as their permanent one.
+  claimablePassword Boolean @default(false)
 
   // Coordinator evaluation
   /// PENDING | VERIFIED
