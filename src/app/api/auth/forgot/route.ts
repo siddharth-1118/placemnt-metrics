@@ -39,21 +39,39 @@ export async function POST(req: Request) {
 
   // Best-effort matching for the coordinator's convenience, but never an
   // error from the requester's point of view.
-  const account = await prisma.student.findUnique({
-    where: { email: parsed.data.email },
-    select: { id: true, registerNumber: true },
-  });
-  const matches =
-    account !== null && account.registerNumber === parsed.data.registerNumber;
+  let matches = false;
+  try {
+    const account = await prisma.student.findUnique({
+      where: { email: parsed.data.email },
+      select: { id: true, registerNumber: true },
+    });
+    matches = account !== null && account.registerNumber === parsed.data.registerNumber;
+  } catch {
+    // DB lookup hiccup must not block the request — coordinator verifies manually.
+  }
 
-  await prisma.passwordResetRequest.create({
-    data: {
-      fullName: parsed.data.fullName,
-      email: parsed.data.email,
-      registerNumber: parsed.data.registerNumber,
-      note: matches ? null : "Details do not match an existing account — verify manually",
-    },
-  });
+  try {
+    await prisma.passwordResetRequest.create({
+      data: {
+        fullName: parsed.data.fullName,
+        email: parsed.data.email,
+        registerNumber: parsed.data.registerNumber,
+        note: matches ? null : "Details do not match an existing account — verify manually",
+      },
+    });
+  } catch (err) {
+    // Most likely the PasswordResetRequest table doesn't exist yet (deployed
+    // database not migrated). Log loudly server-side but still accept the
+    // student's submission so they aren't stuck — the coordinator panel and
+    // the direct-reset tool remain available to fix the password.
+    console.error("[forgot] could not persist reset request:", (err as Error).message);
+    return NextResponse.json({
+      ok: true,
+      degraded: true,
+      message:
+        "Request noted. Ask your coordinator to reset your password directly from their dashboard — they can issue a new one for your email.",
+    });
+  }
 
   return NextResponse.json({
     ok: true,

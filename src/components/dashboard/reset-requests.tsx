@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Check, KeyRound, Loader2, X } from "lucide-react";
-import { Badge, Button, Card, CardContent } from "@/components/ui";
+import { AlertTriangle, Check, KeyRound, Loader2, UserRoundSearch, X } from "lucide-react";
+import { Badge, Button, Card, CardContent, Input, Label } from "@/components/ui";
 
 interface ResetRequestDto {
   id: string;
@@ -27,6 +27,37 @@ export function ResetRequestsPanel() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [issued, setIssued] = useState<{ id: string; password: string } | null>(null);
+
+  // Direct access reset (no request needed)
+  const [directEmail, setDirectEmail] = useState("");
+  const [directBusy, setDirectBusy] = useState(false);
+  const [directResult, setDirectResult] = useState<{ name: string; password: string } | null>(null);
+  const [directError, setDirectError] = useState<string | null>(null);
+
+  async function directReset() {
+    setDirectError(null);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(directEmail.trim())) {
+      setDirectError("Enter the student's registered email");
+      return;
+    }
+    if (!window.confirm(`Issue a new password for ${directEmail.trim()}? The student should be present or reachable to receive it.`)) return;
+    setDirectBusy(true);
+    try {
+      const res = await fetch("/api/auth/forgot/direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: directEmail.trim() }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error ?? "Reset failed");
+      setDirectResult({ name: body.account.fullName, password: body.tempPassword });
+      setDirectEmail("");
+    } catch (e) {
+      setDirectError((e as Error).message);
+    } finally {
+      setDirectBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -106,6 +137,43 @@ export function ResetRequestsPanel() {
             </p>
           </div>
         )}
+
+        {/* Direct access reset — for students who never filed a request */}
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5">
+          <p className="flex items-center gap-1.5 text-sm font-medium">
+            <UserRoundSearch className="h-4 w-4 text-primary" /> Reset any account directly
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            For students who lost access and never sent a request — issue a fresh password right
+            here; they&apos;ll also get a portal notification.
+          </p>
+          <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
+            <Input
+              type="email"
+              placeholder="student@srmist.edu.in"
+              value={directEmail}
+              onChange={(e) => setDirectEmail(e.target.value)}
+              className="flex-1"
+              aria-label="Account email"
+            />
+            <Button onClick={directReset} disabled={directBusy} className="shrink-0">
+              {directBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              Issue password
+            </Button>
+          </div>
+          {directError && <p className="mt-2 text-xs text-destructive">{directError}</p>}
+          {directResult && (
+            <div className="mt-2.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm">
+              <p className="font-medium">New password for {directResult.name}</p>
+              <p className="mt-1 break-all font-mono text-xs">{directResult.password}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Show it once to the student — it will not be shown again.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-1">
+          <Label className="text-xs text-muted-foreground">Requests from students</Label>
+        </div>
 
         {requests.length === 0 ? (
           <p className="text-sm text-muted-foreground">No reset requests yet.</p>
