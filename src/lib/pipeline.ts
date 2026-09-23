@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { scrapePlatform } from "@/lib/scrapers";
 import { parseGithubLogin, parseLeetcodeUser } from "@/lib/utils";
+import { applyAutoPlatformScores } from "@/lib/score";
 import type { Platform } from "@/lib/types";
 
 /**
@@ -28,7 +29,12 @@ export function enqueueScrapes(
     jobs.push(executeScrape(studentId, "LEETCODE", lcUser));
   }
 
-  return Promise.allSettled(jobs);
+  return Promise.allSettled(jobs).then(async (results) => {
+    // Scrapes settled → apply the scraped-metrics suggestions (GitHub 15,
+    // LeetCode 10) so the leaderboard shows calculated marks immediately.
+    await applyAutoPlatformScores(studentId);
+    return results;
+  });
 }
 
 /** Single-platform variant used by the per-student re-scrape endpoint. */
@@ -37,7 +43,11 @@ export function runSingleScrape(
   platform: Platform,
   handle: string
 ): Promise<unknown> {
-  return executeScrape(studentId, platform, handle).catch(() => undefined);
+  return executeScrape(studentId, platform, handle)
+    .then(async () => {
+      await applyAutoPlatformScores(studentId);
+    })
+    .catch(() => undefined);
 }
 
 /** Run one scrape job, persisting status transitions and the payload. */

@@ -131,6 +131,8 @@ export async function POST(req: Request) {
   }
 
   // Default academic score from marks (coordinator-adjustable later).
+  // Computed for EVERY submission path — including a signed-in coordinator
+  // submitting their own placement profile under their account email.
   const academic = suggestAcademicScore(d.tenthPercent, d.twelfthPercent, d.cgpa);
 
   let student;
@@ -148,7 +150,7 @@ export async function POST(req: Request) {
     // (role, evaluator assignment, password, and status stay intact).
     student = await prisma.student.update({
       where: { id: existingByEmail.id },
-      data,
+      data: { ...data, scoreAcademic: academic, totalScore: academic },
       include: { scrapes: true },
     });
   } else {

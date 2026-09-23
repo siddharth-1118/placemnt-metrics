@@ -70,6 +70,63 @@ export function suggestAcademicScore(tenth: number, twelfth: number, cgpa: numbe
 }
 
 /**
+ * Auto-apply the scraped GitHub / LeetCode suggestions for a student, filling
+ * only scores that are still zero (fresh submissions). Coordinator-entered
+ * scores are never overwritten. Recomputes the total from all six components
+ * and refreshes ranks. Called after the submit/rescrape scrapes settle.
+ */
+export async function applyAutoPlatformScores(studentId: string): Promise<void> {
+  const { prisma } = await import("@/lib/prisma");
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    include: { scrapes: true },
+  });
+  if (!student) return;
+
+  const ghJob = student.scrapes.find((s) => s.platform === "GITHUB");
+  const lcJob = student.scrapes.find((s) => s.platform === "LEETCODE");
+
+  let ghData: GithubScrapedData | null = null;
+  let lcData: LeetcodeScrapedData | null = null;
+  try {
+    if (ghJob?.status === "SUCCESS" && ghJob.dataJson) ghData = JSON.parse(ghJob.dataJson);
+    if (lcJob?.status === "SUCCESS" && lcJob.dataJson) lcData = JSON.parse(lcJob.dataJson);
+  } catch {
+    // Corrupt payloads shouldn't block scoring — treat as missing.
+  }
+
+  const ghSuggested = suggestGithubScore(ghData);
+  const lcSuggested = suggestCodingScore(lcData);
+
+  // Fill zeros only — an explicit coordinator score always wins.
+  const merged = {
+    academic: student.scoreAcademic,
+    github: student.scoreGithub > 0 ? student.scoreGithub : ghSuggested,
+    coding: student.scoreCoding > 0 ? student.scoreCoding : lcSuggested,
+    projects: student.scoreProjects,
+    internship: student.scoreInternship,
+    extras: student.scoreExtras,
+  };
+  const clamped = clampScores(merged);
+
+  const unchanged =
+    clamped.github === student.scoreGithub &&
+    clamped.coding === student.scoreCoding &&
+    clamped.total === student.totalScore;
+  if (unchanged) return;
+
+  await prisma.student.update({
+    where: { id: student.id },
+    data: {
+      scoreGithub: clamped.github,
+      scoreCoding: clamped.coding,
+      totalScore: clamped.total,
+    },
+  });
+  await assignRanks();
+}
+
+/**
  * Recompute dense placement ranks (1, 2, 3, …, ties share a rank) for all
  * students ordered by total score, then register number for stable ties.
  */
