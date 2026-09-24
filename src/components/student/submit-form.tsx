@@ -22,7 +22,7 @@ const initialForm = {
   confirmPassword: "",
 };
 
-export function SubmitForm() {
+export function SubmitForm({ locked = false }: { locked?: boolean }) {
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -76,6 +76,10 @@ export function SubmitForm() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (locked) {
+      setTopError("Submissions are closed by the coordinator — your changes cannot be saved right now.");
+      return;
+    }
     setTopError(null);
     const er = validate();
     setErrors(er);
@@ -272,11 +276,13 @@ export function SubmitForm() {
       </section>
 
       <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:gap-3">
-        <Button type="submit" className="w-full sm:w-auto" disabled={submitting}>
+        <Button type="submit" className="w-full sm:w-auto" disabled={submitting || locked}>
           {submitting ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" /> Submitting…
             </>
+          ) : locked ? (
+            "Submissions closed"
           ) : (
             "Submit for verification"
           )}

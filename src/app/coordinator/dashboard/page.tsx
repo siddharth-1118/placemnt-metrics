@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { ResetRequestsPanel } from "@/components/dashboard/reset-requests";
+import { SubmissionsToggle } from "@/components/dashboard/submissions-toggle";
 
 export const metadata: Metadata = {
   title: "Coordinator dashboard",
@@ -24,6 +25,9 @@ export default async function CoordinatorDashboardPage() {
           Every submission next to its live-scraped GitHub &amp; LeetCode evidence. Verify
           documents, score against the caps, and the leaderboard reorders itself.
         </p>
+      </div>
+      <div className="mb-6">
+        <SubmissionsToggle />
       </div>
       <Dashboard />
       <div className="mt-8">

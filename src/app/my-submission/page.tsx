@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Lock } from "lucide-react";
 import { getSessionUser } from "@/lib/auth";
+import { isSubmissionsLocked } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
 import { toDto } from "@/lib/dto";
 import { StudentSummaryCard, ScrapeCards } from "@/components/dashboard/read-only-cards";
@@ -18,6 +20,9 @@ export const metadata: Metadata = {
 export default async function MySubmissionPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+
+  const isEvaluator = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  const locked = !isEvaluator && (await isSubmissionsLocked());
 
   const row = await prisma.student.findUnique({
     where: { id: user.id },
@@ -46,13 +51,29 @@ export default async function MySubmissionPage() {
             </Link>
           )}
           <Link href="/student/submit">
-            <Button variant="outline">Update profile</Button>
+            <Button variant="outline" disabled={locked} title={locked ? "Submissions are closed by the coordinator" : undefined}>
+              Update profile
+            </Button>
           </Link>
         </div>
       </div>
 
       {/* Coordinator actions (document removed, password reset, …) surface here. */}
       <NotificationBell />
+
+      {locked && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3.5 text-sm">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <div>
+            <p className="font-semibold text-amber-600">Submissions are closed</p>
+            <p className="mt-0.5 text-muted-foreground">
+              The coordinator has closed submissions — profile updates, document uploads and new
+              links are disabled. Existing documents and scores are unaffected; contact your
+              coordinator if something must be corrected.
+            </p>
+          </div>
+        </div>
+      )}
 
       <StudentSummaryCard s={student} />
       <ScrapeCards s={student} />
@@ -65,14 +86,14 @@ export default async function MySubmissionPage() {
             SHL documents. Coordinators verify each file individually.
           </p>
         </div>
-        <DocumentUploader />
+        <DocumentUploader locked={locked} />
       </section>
 
       <section className="space-y-3">
         <div>
           <h2 className="text-lg font-semibold tracking-[-0.015em]">Project links</h2>
         </div>
-        <LinkManager />
+        <LinkManager locked={locked} />
       </section>
 
       <section className="space-y-3">

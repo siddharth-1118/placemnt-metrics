@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
+import { isSubmissionsLocked } from "@/lib/settings";
 import { linkToDto } from "@/lib/dto";
 import { LINK_CATEGORY_KEYS } from "@/lib/categories";
 
@@ -21,6 +22,15 @@ export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in to add links" }, { status: 401 });
+  }
+
+  // Submissions closed: students can no longer add links (evaluators bypass).
+  const isEvaluatorUser = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  if (!isEvaluatorUser && (await isSubmissionsLocked())) {
+    return NextResponse.json(
+      { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
+      { status: 423 }
+    );
   }
 
   const student = await prisma.student.findUnique({ where: { id: user.id } });

@@ -6,6 +6,7 @@ import { clampScores, suggestAcademicScore } from "@/lib/score";
 import { parseGithubLogin, parseLeetcodeUser } from "@/lib/utils";
 import { toDto } from "@/lib/dto";
 import { requireEvaluator, hashPassword, getSessionUser } from "@/lib/auth";
+import { isSubmissionsLocked } from "@/lib/settings";
 import type { StudentDto } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,17 @@ export async function GET() {
 
 /** POST /api/students — student submission; creates or updates, then triggers scrapes */
 export async function POST(req: Request) {
+  // Coordinator kill-switch: when submissions are closed, nobody can submit
+  // or resubmit a profile (evaluators bypass so they can still fix data).
+  const user = await getSessionUser();
+  const isEvaluator = user?.role === "COORDINATOR" && user.evaluatorAssigned;
+  if (!isEvaluator && (await isSubmissionsLocked())) {
+    return NextResponse.json(
+      { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
+      { status: 423 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();

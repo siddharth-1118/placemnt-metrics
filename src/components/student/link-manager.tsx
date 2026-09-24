@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Loader2, Lock, Plus, Trash2 } from "lucide-react";
 import { Badge, Button, Card, CardContent, Input, Label } from "@/components/ui";
 import { LINK_CATEGORIES, linkCategoryLabel } from "@/lib/categories";
 import type { ProjectLinkDto } from "@/lib/types";
@@ -16,7 +16,7 @@ function statusBadge(status: ProjectLinkDto["status"]) {
  * Add-as-many-as-you-want project links on the signed-in user's own
  * submission. Organized by the three link categories.
  */
-export function LinkManager({ onChanged }: { onChanged?: () => void }) {
+export function LinkManager({ onChanged, locked = false }: { onChanged?: () => void; locked?: boolean }) {
   const [links, setLinks] = useState<ProjectLinkDto[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [category, setCategory] = useState(LINK_CATEGORIES[0].key);
@@ -98,23 +98,29 @@ export function LinkManager({ onChanged }: { onChanged?: () => void }) {
 
         {error && <p className="text-xs text-destructive">{error}</p>}
 
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,2fr)_auto]">
-          <select
-            className="h-9 rounded-lg border bg-card px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            aria-label="Link category"
-          >
-            {LINK_CATEGORIES.map((c) => (
-              <option key={c.key} value={c.key}>{c.label}</option>
-            ))}
-          </select>
-          <Input placeholder="Label (e.g. E-commerce app)" value={label} onChange={(e) => setLabel(e.target.value)} />
-          <Input placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} />
-          <Button type="button" onClick={add} disabled={busy}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
-          </Button>
-        </div>
+        {locked ? (
+          <p className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600">
+            <Lock className="h-3.5 w-3.5" /> Adding links is closed by coordinator
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,2fr)_auto]">
+            <select
+              className="h-9 rounded-lg border bg-card px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              aria-label="Link category"
+            >
+              {LINK_CATEGORIES.map((c) => (
+                <option key={c.key} value={c.key}>{c.label}</option>
+              ))}
+            </select>
+            <Input placeholder="Label (e.g. E-commerce app)" value={label} onChange={(e) => setLabel(e.target.value)} />
+            <Input placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} />
+            <Button type="button" onClick={add} disabled={busy}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
+            </Button>
+          </div>
+        )}
 
         {links.length > 0 && (
           <ul className="space-y-1.5">

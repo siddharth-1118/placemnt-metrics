@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileText, Loader2, Trash2, Upload } from "lucide-react";
+import { FileText, Loader2, Lock, Trash2, Upload } from "lucide-react";
 import { Badge, Button, Card, CardContent, Input, Label } from "@/components/ui";
 import { DOC_CATEGORIES, UPLOAD_MAX_BYTES, docCategoryLabel } from "@/lib/categories";
 import type { DocumentDto } from "@/lib/types";
@@ -23,7 +23,7 @@ function statusBadge(status: DocumentDto["status"]) {
  * One upload block per category; uploaded files are listed with their
  * verification status and can be removed while still unverified.
  */
-export function DocumentUploader({ onChanged }: { onChanged?: () => void }) {
+export function DocumentUploader({ onChanged, locked = false }: { onChanged?: () => void; locked?: boolean }) {
   const [docs, setDocs] = useState<DocumentDto[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null); // category key
@@ -148,24 +148,30 @@ export function DocumentUploader({ onChanged }: { onChanged?: () => void }) {
                   </ul>
                 )}
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    ref={(el) => { inputRefs.current[cat.key] = el; }}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
-                    className="h-9 max-w-[240px] cursor-pointer text-xs"
-                  />
-                  <Input
-                    placeholder="Caption (optional)"
-                    className="h-9 max-w-[180px] text-xs"
-                    value={note[cat.key] ?? ""}
-                    onChange={(e) => setNote((n) => ({ ...n, [cat.key]: e.target.value }))}
-                  />
-                  <Button type="button" size="sm" variant="outline" disabled={uploading === cat.key} onClick={() => upload(cat.key)}>
-                    {uploading === cat.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                    Upload
-                  </Button>
-                </div>
+                {locked ? (
+                  <p className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600">
+                    <Lock className="h-3.5 w-3.5" /> Uploads closed by coordinator
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      ref={(el) => { inputRefs.current[cat.key] = el; }}
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      className="h-9 max-w-[240px] cursor-pointer text-xs"
+                    />
+                    <Input
+                      placeholder="Caption (optional)"
+                      className="h-9 max-w-[180px] text-xs"
+                      value={note[cat.key] ?? ""}
+                      onChange={(e) => setNote((n) => ({ ...n, [cat.key]: e.target.value }))}
+                    />
+                    <Button type="button" size="sm" variant="outline" disabled={uploading === cat.key} onClick={() => upload(cat.key)}>
+                      {uploading === cat.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                      Upload
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           );

@@ -15,6 +15,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Single-row key/value store for coordinator-controlled portal settings.
+/// Keys are strings, values are JSON-encoded; created lazily on first write.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 /// A student's placement submission (AO1 batch).
 model Student {
   id             String   @id @default(cuid())

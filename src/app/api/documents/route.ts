@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
+import { isSubmissionsLocked } from "@/lib/settings";
 import { docToDto } from "@/lib/dto";
 import { putDocument, deleteDocument } from "@/lib/storage";
 import { notify } from "@/lib/notify";
@@ -27,6 +28,16 @@ export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in to upload documents" }, { status: 401 });
+  }
+
+  // Submissions closed: students can no longer add documents (evaluators
+  // bypass so they can still fix data during review).
+  const isEvaluatorUser = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  if (!isEvaluatorUser && (await isSubmissionsLocked())) {
+    return NextResponse.json(
+      { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
+      { status: 423 }
+    );
   }
 
   // The student must have a submission row to attach documents to.

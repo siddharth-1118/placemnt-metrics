@@ -42,6 +42,14 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- approval; the student's next sign-in (email + any password) claims it.
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "claimablePassword" BOOLEAN NOT NULL DEFAULT false;
 
+-- v4: coordinator settings (submission lock switch), single key/value table.
+CREATE TABLE IF NOT EXISTS "Setting" (
+    "key" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Setting_pkey" PRIMARY KEY ("key")
+);
+
 -- Self-check: should return 2 rows
 SELECT 'PasswordResetRequest' AS table_name, count(*) FROM "PasswordResetRequest"
 UNION ALL

@@ -213,3 +213,11 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- v3: claimable password flow (old hash cleared on approval; next sign-in
 -- with email + any password claims it as the permanent password)
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "claimablePassword" BOOLEAN NOT NULL DEFAULT false;
+
+-- v4: coordinator settings (submission lock switch), single key/value table.
+CREATE TABLE IF NOT EXISTS "Setting" (
+    "key" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Setting_pkey" PRIMARY KEY ("key")
+);
