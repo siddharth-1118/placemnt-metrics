@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, RefreshCw, Save, ShieldCheck, UserRound, X, Loader2,
+  AlertTriangle, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X, Loader2,
 } from "lucide-react";
 import { Button, Input, Label, Badge, Card, CardContent } from "@/components/ui";
 import { GithubCard } from "@/components/dashboard/github-card";
@@ -96,6 +96,7 @@ export function StudentDetailModal({
   const [student, setStudent] = useState<StudentDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [scores, setScores] = useState<ScoreBreakdown>({ academic: 0, github: 0, coding: 0, projects: 0, internship: 0, extras: 0 });
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -211,6 +212,27 @@ export function StudentDetailModal({
     }
   }
 
+  async function deleteProfile() {
+    if (!student) return;
+    const ok = window.confirm(
+      `Permanently delete ${student.fullName} (${student.registerNumber})?\n\n` +
+        "This removes their profile, scraped data, all uploaded documents and score. " +
+        "It cannot be undone."
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/students/${student.id}`, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? "Delete failed");
+      onClose();
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[hsl(230_35%_14%/0.45)] p-2 backdrop-blur-[6px] sm:p-4" role="dialog" aria-modal="true">
       <div className="glass-strong my-2 w-full max-w-4xl animate-rise rounded-2xl sm:my-6 sm:rounded-3xl">
@@ -233,6 +255,18 @@ export function StudentDetailModal({
               {student.status === "VERIFIED" ? <ShieldCheck className="h-3 w-3" /> : null}
               {student.status}
             </Badge>
+          )}
+          {student && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              title="Delete profile permanently"
+              disabled={deleting}
+              onClick={deleteProfile}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            </Button>
           )}
           <Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}>
             <X className="h-4 w-4" />

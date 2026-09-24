@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Award, Calculator, ChevronsUpDown, Code2, FileCheck2, Github, Loader2, RefreshCw, Search, Users,
+  Award, Calculator, ChevronsUpDown, Code2, FileCheck2, Github, Loader2, RefreshCw, Search, Trash2, Users,
 } from "lucide-react";
 import { Badge, Button, Card, CardContent, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
@@ -183,6 +183,29 @@ export function Dashboard() {
     try {
       await fetch(`/api/students/${s.id}/rescrape`, { method: "POST" });
       await load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function removeStudent(s: StudentDto, e: React.MouseEvent) {
+    e.stopPropagation();
+    const ok = window.confirm(
+      `Permanently delete ${s.fullName} (${s.registerNumber})?\n\n` +
+        "This removes their profile, scraped data, all uploaded documents and score. " +
+        "It cannot be undone."
+    );
+    if (!ok) return;
+    setBusyId(s.id);
+    try {
+      const res = await fetch(`/api/students/${s.id}`, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? "Delete failed");
+      if (selectedId === s.id) setSelectedId(null);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+      setTimeout(() => setError(null), 5000);
     } finally {
       setBusyId(null);
     }
@@ -385,15 +408,27 @@ export function Dashboard() {
                   <span className="text-xs text-muted-foreground">/100</span>
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    title="Re-scrape profiles"
-                    disabled={busyId === s.id}
-                    onClick={(e) => rescrape(s, e)}
-                  >
-                    {busyId === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  </Button>
+                  <div className="flex items-center justify-end gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Re-scrape profiles"
+                      disabled={busyId === s.id}
+                      onClick={(e) => rescrape(s, e)}
+                    >
+                      {busyId === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      title="Delete profile permanently"
+                      disabled={busyId === s.id}
+                      onClick={(e) => removeStudent(s, e)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}
