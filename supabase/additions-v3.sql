@@ -1,14 +1,17 @@
 -- =====================================================================
 -- ADDITIONS (v3) — paste this WHOLE file into Supabase → SQL Editor → Run.
 --
--- REQUIRED before/with the current app deploy. Three jobs:
+-- REQUIRED before/with the current app deploy. Jobs:
 --   1. Add the super-admin / per-coordinator permission columns (fixes the
 --      "Could not change the setting (HTTP 500)" — the app queries these on
 --      every login/API call, so a missing column crashes the route),
 --   2. Add the per-coordinator section scopes column,
---   3. Migrate the legacy 'EXTRAS' scope key to the new per-section keys.
+--   3. Ensure sv3824@srmist.edu.in EXISTS as the super admin (creates the
+--      account if missing, promotes it if present),
+--   4. New AO1 rubric score columns + one-time old-scale score reset,
+--   5. Migrate legacy scope keys.
 --
--- Safe to re-run; touches nothing else and never touches passwords.
+-- Safe to re-run; re-running NEVER wipes scores or changes your password.
 -- =====================================================================
 
 -- 1. Permission columns (super admin + view/score flags)
@@ -17,13 +20,37 @@ ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "canViewSubmissions" BOOLEAN NOT 
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "canScore"           BOOLEAN NOT NULL DEFAULT false;
 
 -- 2. Per-coordinator section scopes (JSON array of strings).
---    Sections: ACADEMIC | GITHUB | CODING | PROJECTS | INTERNSHIP |
+--    Sections: ACADEMIC | GITHUB | CODING | PROJECTS | FULLSTACK | INTERNSHIP |
 --              CERTIFICATIONS | HACKATHONS | MEMBERSHIP | SHL | INHOUSE
 --    Empty array = ALL sections (full access). Managed from the super
 --    admin's "Coordinator management" panel.
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "permissionScopes" TEXT NOT NULL DEFAULT '[]';
 
--- 3. Promote the super admin (idempotent).
+-- 3a. Ensure the super admin account EXISTS (creates it if missing).
+--     Initial password: SRM-AO1-016273D2  — sign in and change it via
+--     Account security. Only set on INSERT; re-running never overwrites
+--     an existing password.
+INSERT INTO "Student" (
+  "id", "registerNumber", "fullName", "email",
+  "tenthPercent", "twelfthPercent", "cgpa",
+  "role", "evaluatorAssigned",
+  "isSuperAdmin", "canViewSubmissions", "canScore",
+  "passwordHash", "proofUrls", "uploadToken",
+  "createdAt", "updatedAt"
+)
+SELECT
+  'coord-sv3824', 'COORD-SV3824', 'Siddharth V (Super Admin)', 'sv3824@srmist.edu.in',
+  0, 0, 0,
+  'COORDINATOR', true,
+  true, true, true,
+  'd45435861c517a84d8b9dee1d5f5ad7f:945c8098a6442b6b8f956e9c8c251a019c364a78f989601e516779833f8633c38a5cd802e2fb55f344d749669463a30bc18f41a1eb629a3ab20541f9e2b41d5b',
+  '[]', gen_random_uuid()::text,
+  now(), now()
+WHERE NOT EXISTS (
+  SELECT 1 FROM "Student" WHERE "email" = 'sv3824@srmist.edu.in'
+);
+
+-- 3b. Promote the super admin (idempotent; never touches passwordHash).
 UPDATE "Student"
 SET "role"               = 'COORDINATOR',
     "isSuperAdmin"       = true,
@@ -31,7 +58,7 @@ SET "role"               = 'COORDINATOR',
     "canScore"           = true
 WHERE "email" = 'sv3824@srmist.edu.in';
 
--- 3b. NEW AO1 RUBRIC SCORE COLUMNS (Placement Cell PPT — 13 metrics →
+-- 4. NEW AO1 RUBRIC SCORE COLUMNS (Placement Cell PPT — 13 metrics →
 --      11 stored components, total 100). The old combined scoreExtras
 --      (certs+hackathons+memberships+SHL in one 0–15 field) cannot be
 --      split reliably, so it is retired; coordinators re-enter the
@@ -66,7 +93,7 @@ ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreMembership"   DOUBLE PRECIS
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreShl"          DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE "Student" DROP COLUMN IF EXISTS "scoreExtras";
 
--- 4. Migrate legacy scope keys:
+-- 5. Migrate legacy scope keys:
 --    • 'EXTRAS' bundled certs + hackathons + memberships + SHL → expand into
 --      those four explicit keys.
 --    • 'PROJECTS' used to cover both project and full-stack links → also
@@ -90,7 +117,7 @@ SET "permissionScopes" = (
 WHERE "permissionScopes"::jsonb ? 'EXTRAS'
    OR "permissionScopes"::jsonb ? 'PROJECTS';
 
--- 5. Self-checks.
+-- 6. Self-checks.
 -- A) Columns exist? → must list 4 rows.
 SELECT column_name, data_type, column_default
 FROM information_schema.columns
