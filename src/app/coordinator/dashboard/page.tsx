@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { ResetRequestsPanel } from "@/components/dashboard/reset-requests";
 import { SubmissionsToggle } from "@/components/dashboard/submissions-toggle";
+import { CoordinatorsAdmin } from "@/components/dashboard/coordinators-admin";
 
 export const metadata: Metadata = {
   title: "Coordinator dashboard",
@@ -12,8 +13,8 @@ export const metadata: Metadata = {
 export default async function CoordinatorDashboardPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  // Coordinators who are not assigned to the evaluation task are kept out too.
-  if (user.role !== "COORDINATOR" || !user.evaluatorAssigned) redirect("/my-submission");
+  // Coordinators without any evaluation permission are kept out too.
+  if (!user.canViewSubmissions) redirect("/my-submission");
 
   return (
     <div className="mx-auto w-full max-w-7xl px-3 py-8 sm:px-6 sm:py-12">
@@ -24,14 +25,20 @@ export default async function CoordinatorDashboardPage() {
         <p className="mt-2.5 max-w-2xl text-muted-foreground">
           Every submission next to its live-scraped GitHub &amp; LeetCode evidence. Verify
           documents, score against the caps, and the leaderboard reorders itself.
+          {!user.canScore && (
+            <> You have <strong>view-only</strong> access — scoring is done by coordinators with score permission.</>
+          )}
         </p>
       </div>
-      <div className="mb-6">
-        <SubmissionsToggle />
-      </div>
-      <Dashboard />
+      {user.isSuperAdmin && (
+        <div className="mb-6 space-y-6">
+          <SubmissionsToggle />
+          <CoordinatorsAdmin />
+        </div>
+      )}
+      <Dashboard canScore={user.canScore} />
       <div className="mt-8">
-        <ResetRequestsPanel />
+        <ResetRequestsPanel canManage={user.canScore} />
       </div>
     </div>
   );

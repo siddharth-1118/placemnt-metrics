@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireEvaluator } from "@/lib/auth";
+import { requireScorer } from "@/lib/auth";
 import { suggestAcademicScore, clampScores, assignRanks } from "@/lib/score";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  * Fixes rows submitted through an older build that saved academic = 0.
  */
 export async function POST() {
-  const { error } = await requireEvaluator();
+  const { error } = await requireScorer();
   if (error) return error;
 
   const students = await prisma.student.findMany({

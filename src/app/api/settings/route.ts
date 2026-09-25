@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireEvaluator, getSessionUser } from "@/lib/auth";
+import { requireScorer, getSessionUser } from "@/lib/auth";
 import { isSubmissionsLocked, setSubmissionsLocked } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +17,16 @@ export async function GET() {
   return NextResponse.json({ submissionsLocked: locked });
 }
 
-/** POST /api/settings — evaluator-only toggle. */
+/** POST /api/settings — super-admin-only portal toggle. */
 export async function POST(req: Request) {
-  const { error } = await requireEvaluator();
+  const { user, error } = await requireScorer();
   if (error) return error;
+  if (!user.isSuperAdmin) {
+    return NextResponse.json(
+      { error: "Only the super admin can open or close submissions" },
+      { status: 403 }
+    );
+  }
 
   let body: unknown;
   try {

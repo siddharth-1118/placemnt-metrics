@@ -32,6 +32,10 @@ create table if not exists students (
 
   role               text not null default 'STUDENT',
   evaluator_assigned boolean not null default false,
+  -- Super admin: full access + coordinator management (see supabase/additions-v3.sql)
+  is_super_admin        boolean not null default false,
+  can_view_submissions  boolean not null default false,
+  can_score             boolean not null default false,
   password_hash      text,
 
   status           text not null default 'PENDING',
@@ -116,23 +120,30 @@ create index if not exists project_links_student_idx on project_links (student_i
 insert into students (
   id, register_number, full_name, email,
   tenth_percent, twelfth_percent, cgpa,
-  role, evaluator_assigned, password_hash
+  role, evaluator_assigned,
+  is_super_admin, can_view_submissions, can_score,
+  password_hash
 ) values
   ( 'coord-sv3824',
-    'COORD-SV3824', 'SV Coordinator', 'sv3824@srmist.edu.in',
+    'COORD-SV3824', 'Siddharth V (Super Admin)', 'sv3824@srmist.edu.in',
     0, 0, 0,
     'COORDINATOR', true,
+    true, true, true,
     'b17e5a9f7d1566f1949eebd624d974cc:de322b42457c7d8d68860864780b4299f52c81bcc1ca8bccf64dc37fbb6f94ccefcdf07045b373d3f632aed5d6f28f08813bc49bb0cb2c2797dc26ada94f23de'
   ),
   ( 'coord-faculty-01',
-    'COORD-FACULTY-01', 'Faculty Coordinator', 'coordinator@srmist.edu.in',
+    'COORD-FACULTY-01', 'Dr. Ramesh (Placement Coordinator)', 'coordinator@srmist.edu.in',
     0, 0, 0,
     'COORDINATOR', true,
+    false, true, true,
     '9ffd9bd5d3e609531beb5cd7d630ad9c:94e2a72df6e232a93d3ddc6b1ed7333a4c33a61942e3a36b2641ba3f612b5979145ffa48bd4a123859ead45930be7ea544fe1e8adff4ef4913e365247be60466'
   )
 on conflict (email) do update
   set role               = excluded.role,
       evaluator_assigned = excluded.evaluator_assigned,
+      is_super_admin       = excluded.is_super_admin,
+      can_view_submissions = excluded.can_view_submissions,
+      can_score            = excluded.can_score,
       password_hash      = excluded.password_hash;
 
 -- ---------------------------------------------------------------------

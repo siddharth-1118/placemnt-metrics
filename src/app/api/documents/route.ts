@@ -32,7 +32,7 @@ export async function POST(req: Request) {
 
   // Submissions closed: students can no longer add documents (evaluators
   // bypass so they can still fix data during review).
-  const isEvaluatorUser = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluatorUser = user.canViewSubmissions;
   if (!isEvaluatorUser && (await isSubmissionsLocked())) {
     return NextResponse.json(
       { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
@@ -125,7 +125,7 @@ export async function DELETE(req: Request) {
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
 
-  const isEvaluator = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user.canViewSubmissions;
 
   if (!isEvaluator) {
     if (doc.studentId !== user.id) {

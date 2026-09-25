@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { clampScores, assignRanks } from "@/lib/score";
 import { toDto } from "@/lib/dto";
-import { requireEvaluator, getSessionUser } from "@/lib/auth";
+import { requireScorer, getSessionUser } from "@/lib/auth";
 import { SCORE_CAPS } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const { error } = await requireEvaluator();
+  const { error } = await requireScorer();
   if (error) return error;
 
   const student = await prisma.student.findUnique({ where: { id: params.id } });
@@ -95,7 +95,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!user) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
-  const isEvaluator = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user.canViewSubmissions;
   if (!isEvaluator && user.id !== params.id) {
     return NextResponse.json({ error: "You can only view your own scores" }, { status: 403 });
   }

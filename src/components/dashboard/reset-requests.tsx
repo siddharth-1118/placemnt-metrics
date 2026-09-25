@@ -24,7 +24,7 @@ interface ResetRequestDto {
  * with their registered email and ANY password they choose, which becomes
  * their permanent password. The coordinator never handles passwords.
  */
-export function ResetRequestsPanel() {
+export function ResetRequestsPanel({ canManage = true }: { canManage?: boolean }) {
   const [requests, setRequests] = useState<ResetRequestDto[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +54,7 @@ export function ResetRequestsPanel() {
   }, [load]);
 
   async function act(id: string, action: "approve" | "deny") {
+    if (!canManage) return;
     setError(null);
     const r = requests?.find((x) => x.id === id);
     if (
@@ -82,6 +83,7 @@ export function ResetRequestsPanel() {
   }
 
   async function directApprove() {
+    if (!canManage) return;
     setDirectError(null);
     setDirectDone(null);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(directEmail.trim())) {
@@ -148,7 +150,7 @@ export function ResetRequestsPanel() {
         )}
 
         {/* Direct approval — for students who never filed a request */}
-        <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5">
+        <div className={canManage ? "rounded-xl border border-primary/30 bg-primary/5 p-3.5" : "hidden"}>
           <p className="flex items-center gap-1.5 text-sm font-medium">
             <UserRoundSearch className="h-4 w-4 text-primary" /> Reset any account directly
           </p>
@@ -214,7 +216,7 @@ export function ResetRequestsPanel() {
                   <p className="mt-1 text-xs text-muted-foreground">Account name: {r.accountName}</p>
                 )}
                 {r.note && <p className="mt-1 text-xs text-muted-foreground">{r.note}</p>}
-                {r.status === "PENDING" && (
+                {r.status === "PENDING" && canManage && (
                   <div className="mt-2 flex gap-2">
                     <Button size="sm" disabled={busyId === r.id} onClick={() => act(r.id, "approve")}>
                       {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}

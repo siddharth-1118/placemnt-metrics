@@ -59,7 +59,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <UserMenu
               user={
                 user
-                  ? { fullName: user.fullName, role: user.role, evaluatorAssigned: user.evaluatorAssigned }
+                  ? {
+                      fullName: user.fullName,
+                      role: user.role,
+                      isSuperAdmin: user.isSuperAdmin,
+                      evaluatorAssigned: user.canViewSubmissions,
+                    }
                   : null
               }
             />

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default async function StudentSubmitPage() {
   const user = await getSessionUser();
-  const isEvaluator = user?.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user?.canViewSubmissions ?? false;
   const locked = !isEvaluator && (await isSubmissionsLocked());
 
   return (

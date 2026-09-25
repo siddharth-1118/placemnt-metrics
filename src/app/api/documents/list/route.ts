@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const studentId = searchParams.get("studentId") ?? user.id;
 
-  const isEvaluator = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user.canViewSubmissions;
   if (!isEvaluator && studentId !== user.id) {
     return NextResponse.json({ error: "You can only view your own documents" }, { status: 403 });
   }
@@ -50,7 +50,7 @@ export async function DELETE(req: Request) {
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
 
-  const isEvaluator = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user.canViewSubmissions;
   if (doc.studentId !== user.id && !isEvaluator) {
     return NextResponse.json({ error: "Not your document" }, { status: 403 });
   }

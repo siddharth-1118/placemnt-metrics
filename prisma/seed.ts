@@ -12,18 +12,22 @@ const prisma = new PrismaClient();
 
 const COORDINATORS = [
   {
-    reg: "COORD-SV3824",
-    name: "Coordinator (sv3824)",
+    reg: "RA2211003010045",
+    name: "Siddharth V (Super Admin)",
     email: "sv3824@srmist.edu.in",
     password: "vSs@11182007",
-    assigned: true,
+    superAdmin: true,
+    canView: true,
+    canScore: true,
   },
   {
     reg: "COORD-FACULTY-01",
     name: "Dr. Ramesh (Placement Coordinator)",
     email: "coordinator@srmist.edu.in",
     password: "evaluator123",
-    assigned: true,
+    superAdmin: false,
+    canView: true,
+    canScore: true,
   },
 ];
 
@@ -39,17 +43,24 @@ async function main() {
         twelfthPercent: 0,
         cgpa: 0,
         role: "COORDINATOR",
-        evaluatorAssigned: c.assigned,
+        isSuperAdmin: c.superAdmin,
+        canViewSubmissions: c.canView,
+        canScore: c.canScore,
+        evaluatorAssigned: c.canView || c.canScore,
         passwordHash: hashPassword(c.password),
       },
       update: {
         role: "COORDINATOR",
-        evaluatorAssigned: c.assigned,
-        passwordHash: hashPassword(c.password),
+        isSuperAdmin: c.superAdmin,
+        canViewSubmissions: c.canView,
+        canScore: c.canScore,
+        evaluatorAssigned: c.canView || c.canScore,
       },
       select: { id: true },
     });
-    console.log(`Coordinator ready: ${c.email} (evaluatorAssigned: ${c.assigned})`);
+    console.log(
+      `Coordinator ready: ${c.email} (superAdmin: ${c.superAdmin}, view: ${c.canView}, score: ${c.canScore})`
+    );
   }
 
   const students = await prisma.student.count({ where: { role: { not: "COORDINATOR" } } });

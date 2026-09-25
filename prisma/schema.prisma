@@ -48,6 +48,15 @@ model Student {
   role              String   @default("STUDENT")
   /// Coordinators: true when assigned to evaluate this batch (scrape & score).
   evaluatorAssigned Boolean  @default(false)
+  /// Super admin: full access to everything plus coordinator management
+  /// (creating coordinators, granting/revoking their permissions).
+  /// Only settable in the database / seed — never through the API.
+  isSuperAdmin      Boolean  @default(false)
+  /// Coordinators: may open the leaderboard and inspect student submissions.
+  canViewSubmissions Boolean @default(false)
+  /// Coordinators: may enter/adjust scores and verify documents & links
+  /// (implies canViewSubmissions).
+  canScore          Boolean  @default(false)
   /// scrypt hash (salt:hash, hex). Students may optionally set one to view
   /// their own submission; coordinators must have one. NULL after a password
   /// reset approval — the next sign-in with email + any password claims it.

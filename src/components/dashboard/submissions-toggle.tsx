@@ -16,9 +16,15 @@ export function SubmissionsToggle() {
 
   useEffect(() => {
     fetch("/api/settings", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((b) => setLocked(Boolean(b.submissionsLocked)))
-      .catch(() => setLocked(false));
+      .then(async (r) => {
+        const b = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(b?.error ?? `Could not load setting (HTTP ${r.status})`);
+        setLocked(Boolean(b.submissionsLocked));
+      })
+      .catch((e) => {
+        setLocked(false);
+        setError((e as Error).message || "Could not reach the server — is it running?");
+      });
   }, []);
 
   async function toggle() {
@@ -37,13 +43,19 @@ export function SubmissionsToggle() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locked: next }),
-      });
+      let res: Response;
+      try {
+        res = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locked: next }),
+        });
+      } catch {
+        // fetch only rejects on network-level failures: server down, CORS, etc.
+        throw new Error("Could not reach the server — it may have stopped. Refresh the page or restart the dev server.");
+      }
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error ?? "Could not change the setting");
+      if (!res.ok) throw new Error(body?.error ?? `Could not change the setting (HTTP ${res.status})`);
       setLocked(next);
     } catch (e) {
       setError((e as Error).message);

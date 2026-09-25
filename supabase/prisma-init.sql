@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS "Student" (
     "proofUrls" TEXT NOT NULL DEFAULT '[]',
     "role" TEXT NOT NULL DEFAULT 'STUDENT',
     "evaluatorAssigned" BOOLEAN NOT NULL DEFAULT false,
+    "isSuperAdmin" BOOLEAN NOT NULL DEFAULT false,
+    "canViewSubmissions" BOOLEAN NOT NULL DEFAULT false,
+    "canScore" BOOLEAN NOT NULL DEFAULT false,
     "passwordHash" TEXT,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
     "coordinatorNote" TEXT,
@@ -139,6 +142,17 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 
 -- =====================================================================
+-- v5: super admin & per-coordinator permissions. sv3824@srmist.edu.in is
+-- the super admin (everything). Other coordinators get permissions via
+-- the super admin's "Coordinator management" dashboard panel. These
+-- ALTERs are no-ops on a fresh database (columns created above) and
+-- upgrade an existing one in place. MUST run before the seed below.
+-- =====================================================================
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "isSuperAdmin"       BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "canViewSubmissions" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "canScore"           BOOLEAN NOT NULL DEFAULT false;
+
+-- =====================================================================
 -- Seed coordinator accounts (scrypt salt:hash, app-compatible format)
 -- sv3824@srmist.edu.in / vSs@11182007 - coordinator@srmist.edu.in / evaluator123
 -- Re-running updates the passwords to these values.
@@ -146,29 +160,35 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 INSERT INTO "Student" (
   "id", "registerNumber", "fullName", "email",
   "tenthPercent", "twelfthPercent", "cgpa",
-  "role", "evaluatorAssigned", "passwordHash", "proofUrls", "uploadToken",
+  "role", "evaluatorAssigned", "isSuperAdmin", "canViewSubmissions", "canScore",
+  "passwordHash", "proofUrls", "uploadToken",
   "createdAt", "updatedAt"
 ) VALUES
-  ( 'coord-sv3824', 'COORD-SV3824', 'SV Coordinator', 'sv3824@srmist.edu.in',
-    0, 0, 0, 'COORDINATOR', true,
+  ( 'coord-sv3824', 'COORD-SV3824', 'Siddharth V (Super Admin)', 'sv3824@srmist.edu.in',
+    0, 0, 0, 'COORDINATOR', true, true, true, true,
     'b17e5a9f7d1566f1949eebd624d974cc:de322b42457c7d8d68860864780b4299f52c81bcc1ca8bccf64dc37fbb6f94ccefcdf07045b373d3f632aed5d6f28f08813bc49bb0cb2c2797dc26ada94f23de',
     '[]', gen_random_uuid()::text,
     now(), now() ),
   ( 'coord-faculty-01', 'COORD-FACULTY-01', 'Faculty Coordinator', 'coordinator@srmist.edu.in',
-    0, 0, 0, 'COORDINATOR', true,
+    0, 0, 0, 'COORDINATOR', true, false, true, true,
     '9ffd9bd5d3e609531beb5cd7d630ad9c:94e2a72df6e232a93d3ddc6b1ed7333a4c33a61942e3a36b2641ba3f612b5979145ffa48bd4a123859ead45930be7ea544fe1e8adff4ef4913e365247be60466',
     '[]', gen_random_uuid()::text,
     now(), now() )
 ON CONFLICT ("email") DO UPDATE
   SET "role" = EXCLUDED."role",
       "evaluatorAssigned" = EXCLUDED."evaluatorAssigned",
+      "isSuperAdmin" = EXCLUDED."isSuperAdmin",
+      "canViewSubmissions" = EXCLUDED."canViewSubmissions",
+      "canScore" = EXCLUDED."canScore",
       "passwordHash" = EXCLUDED."passwordHash",
       "updatedAt" = now();
 
 -- ---------------------------------------------------------------------
 -- 6. Self-check — should return the two coordinator rows below
+-- (sv3824 must show isSuperAdmin = true)
 -- ---------------------------------------------------------------------
-SELECT "email", "role", "evaluatorAssigned" AS assigned
+SELECT "email", "role", "evaluatorAssigned" AS assigned,
+       "isSuperAdmin", "canViewSubmissions", "canScore"
 FROM "Student"
 WHERE "role" = 'COORDINATOR'
 ORDER BY "email";

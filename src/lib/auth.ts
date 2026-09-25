@@ -9,8 +9,11 @@ export { hashPassword, verifyPassword };
  * Lightweight session auth:
  *  - Passwords: scrypt (salt:hash, hex).
  *  - Sessions: signed stateless cookie (userId.expiry.hmac) — no extra table.
- *  - Authorization: only coordinators with evaluatorAssigned = true may access
- *    the evaluator dashboard/APIs. Everyone else sees only their own submission.
+ *  - Authorization: three tiers.
+ *      SUPER_ADMIN  — everything + coordinator management (never through APIs)
+ *      COORDINATOR  — gated by per-coordinator permissions (canViewSubmissions,
+ *                     canScore; canScore implies canViewSubmissions)
+ *      STUDENT      — own submission only.
  */
 
 export const SESSION_COOKIE = "srm_session";
@@ -70,7 +73,12 @@ export async function clearSessionCookie() {
 export interface SessionUser {
   id: string;
   role: "STUDENT" | "COORDINATOR";
+  isSuperAdmin: boolean;
   evaluatorAssigned: boolean;
+  /** May open the leaderboard / inspect student submissions. */
+  canViewSubmissions: boolean;
+  /** May score and verify documents & links (implies canViewSubmissions). */
+  canScore: boolean;
   fullName: string;
   registerNumber: string;
   email: string;
@@ -87,24 +95,35 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     select: {
       id: true,
       role: true,
+      isSuperAdmin: true,
       evaluatorAssigned: true,
+      canViewSubmissions: true,
+      canScore: true,
       fullName: true,
       registerNumber: true,
       email: true,
     },
   });
   if (!s) return null;
+  const role = s.role === "COORDINATOR" ? "COORDINATOR" : "STUDENT";
+  // canScore implies canViewSubmissions; super admin passes every check.
+  const canViewSubmissions =
+    s.isSuperAdmin || (role === "COORDINATOR" && (s.canViewSubmissions || s.canScore));
+  const canScore = s.isSuperAdmin || (role === "COORDINATOR" && s.canScore);
   return {
     id: s.id,
-    role: s.role === "COORDINATOR" ? "COORDINATOR" : "STUDENT",
-    evaluatorAssigned: s.evaluatorAssigned,
+    role,
+    isSuperAdmin: s.isSuperAdmin,
+    evaluatorAssigned: canViewSubmissions,
+    canViewSubmissions,
+    canScore,
     fullName: s.fullName,
     registerNumber: s.registerNumber,
     email: s.email,
   };
 }
 
-/** Guard for evaluator-only APIs. Returns the user or a NextResponse error. */
+/** Guard for all evaluator APIs — view level. */
 export async function requireEvaluator(): Promise<
   { user: SessionUser; error: null } | { user: null; error: Response }
 > {
@@ -118,7 +137,7 @@ export async function requireEvaluator(): Promise<
       ),
     };
   }
-  if (user.role !== "COORDINATOR" || !user.evaluatorAssigned) {
+  if (!user.canViewSubmissions) {
     return {
       user: null,
       error: Response.json(
@@ -128,4 +147,35 @@ export async function requireEvaluator(): Promise<
     };
   }
   return { user, error: null };
+}
+
+/** Guard for mutation APIs (scores, verification, deletes, resets, settings). */
+export async function requireScorer(): Promise<
+  { user: SessionUser; error: null } | { user: null; error: Response }
+> {
+  const user = await getSessionUser();
+  if (!user) {
+    return {
+      user: null,
+      error: Response.json(
+        { error: "Sign in required" },
+        { status: 401 }
+      ),
+    };
+  }
+  if (!user.canScore) {
+    return {
+      user: null,
+      error: Response.json(
+        { error: "You do not have permission to change evaluations" },
+        { status: 403 }
+      ),
+    };
+  }
+  return { user, error: null };
+}
+
+/** True when this user may bypass the submissions kill-switch. */
+export function isEvaluatorUser(user: SessionUser | null): boolean {
+  return !!user?.canViewSubmissions;
 }

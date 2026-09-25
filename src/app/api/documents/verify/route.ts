@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireEvaluator } from "@/lib/auth";
+import { requireScorer } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ const verifySchema = z.object({
  * VERIFIED / REJECTED (with an optional note). PENDING resets the review.
  */
 export async function PATCH(req: Request) {
-  const { error } = await requireEvaluator();
+  const { error } = await requireScorer();
   if (error) return error;
 
   let body: unknown;

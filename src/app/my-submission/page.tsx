@@ -21,7 +21,7 @@ export default async function MySubmissionPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const isEvaluator = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user.canViewSubmissions;
   const locked = !isEvaluator && (await isSubmissionsLocked());
 
   const row = await prisma.student.findUnique({
@@ -45,7 +45,7 @@ export default async function MySubmissionPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {user.role === "COORDINATOR" && user.evaluatorAssigned && (
+          {isEvaluator && (
             <Link href="/coordinator/dashboard">
               <Button variant="outline">Evaluation dashboard</Button>
             </Link>

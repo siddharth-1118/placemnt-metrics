@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { enqueueScrapes, runSingleScrape } from "@/lib/pipeline";
 import { parseGithubLogin, parseLeetcodeUser } from "@/lib/utils";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth"; // user.canViewSubmissions replaces the old role check
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
-  const isEvaluator = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user.canViewSubmissions;
   if (!isEvaluator && user.id !== params.id) {
     return NextResponse.json({ error: "You can only re-scrape your own profiles" }, { status: 403 });
   }

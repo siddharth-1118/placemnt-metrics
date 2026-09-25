@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 
   const token = new URL(req.url).searchParams.get("token");
-  const isEvaluator = user?.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user?.canViewSubmissions ?? false;
   const isOwner = user?.id === doc.studentId;
   const tokenOk = token !== null && token === doc.student.uploadToken;
 

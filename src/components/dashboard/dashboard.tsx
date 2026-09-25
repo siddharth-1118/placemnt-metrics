@@ -67,7 +67,7 @@ function SummaryCell({ s, platform }: { s: StudentDto; platform: "GITHUB" | "LEE
   );
 }
 
-export function Dashboard() {
+export function Dashboard({ canScore = true }: { canScore?: boolean }) {
   const [students, setStudents] = useState<StudentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -264,15 +264,17 @@ export function Dashboard() {
         <Button variant="outline" onClick={load}>
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
-        <Button
-          variant="outline"
-          onClick={recalculate}
-          disabled={recalcBusy}
-          title="Rebuild academic scores and totals from stored marks (fixes rows from older builds)"
-        >
-          {recalcBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
-          Recalculate scores
-        </Button>
+        {canScore && (
+          <Button
+            variant="outline"
+            onClick={recalculate}
+            disabled={recalcBusy}
+            title="Rebuild academic scores and totals from stored marks (fixes rows from older builds)"
+          >
+            {recalcBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
+            Recalculate scores
+          </Button>
+        )}
       </div>
 
       {recalcMsg && (
@@ -418,16 +420,18 @@ export function Dashboard() {
                     >
                       {busyId === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      title="Delete profile permanently"
-                      disabled={busyId === s.id}
-                      onClick={(e) => removeStudent(s, e)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canScore && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        title="Delete profile permanently"
+                        disabled={busyId === s.id}
+                        onClick={(e) => removeStudent(s, e)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -443,6 +447,7 @@ export function Dashboard() {
       {selectedId && (
         <StudentDetailModal
           studentId={selectedId}
+          canScore={canScore}
           onClose={() => setSelectedId(null)}
           onChanged={load}
         />

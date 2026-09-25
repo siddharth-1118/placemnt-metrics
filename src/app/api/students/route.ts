@@ -70,7 +70,7 @@ export async function POST(req: Request) {
   // Coordinator kill-switch: when submissions are closed, nobody can submit
   // or resubmit a profile (evaluators bypass so they can still fix data).
   const user = await getSessionUser();
-  const isEvaluator = user?.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user?.canViewSubmissions ?? false;
   if (!isEvaluator && (await isSubmissionsLocked())) {
     return NextResponse.json(
       { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
@@ -118,6 +118,7 @@ export async function POST(req: Request) {
   // updates their own record (coordinators can submit as students too);
   // anonymous submissions may never touch an existing account's email.
   const session = await getSessionUser();
+  const sessionIsEvaluator = !!session?.canViewSubmissions;
   const existing = await prisma.student.findUnique({ where: { registerNumber: d.registerNumber } });
   const existingByEmail = await prisma.student.findUnique({ where: { email: d.email } });
 

@@ -51,10 +51,12 @@ async function deleteApi(kind: "document" | "link", id: string) {
 export function VerificationPanel({
   documents,
   links,
+  canScore = true,
   onChanged,
 }: {
   documents: DocumentDto[];
   links: ProjectLinkDto[];
+  canScore?: boolean;
   onChanged?: () => void;
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -147,25 +149,29 @@ export function VerificationPanel({
                       >
                         Open <ExternalLink className="h-3 w-3" />
                       </a>
-                      <Button
-                        size="icon"
-                        className="h-8 w-8"
-                        title="Verify"
-                        disabled={busyId === d.id || d.status === "VERIFIED"}
-                        onClick={() => act("document", d.id, "VERIFIED")}
-                      >
-                        <Check className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="destructive"
-                        className="h-8 w-8"
-                        title="Reject"
-                        disabled={busyId === d.id || d.status === "REJECTED"}
-                        onClick={() => act("document", d.id, "REJECTED", "Proof not acceptable")}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+                      {canScore && (
+                        <Button
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Verify"
+                          disabled={busyId === d.id || d.status === "VERIFIED"}
+                          onClick={() => act("document", d.id, "VERIFIED")}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canScore && (
+                        <Button
+                          size="icon"
+                          variant="destructive"
+                          className="h-8 w-8"
+                          title="Reject"
+                          disabled={busyId === d.id || d.status === "REJECTED"}
+                          onClick={() => act("document", d.id, "REJECTED", "Proof not acceptable")}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         size="icon"
                         variant="outline"
@@ -208,25 +214,29 @@ export function VerificationPanel({
                   <span className="shrink-0 text-xs text-muted-foreground">{linkCategoryLabel(l.category)}</span>
                   <StatusBadge status={l.status} />
                   <div className="flex shrink-0 gap-1">
-                    <Button
-                      size="icon"
-                      className="h-8 w-8"
-                      title="Verify"
-                      disabled={busyId === l.id || l.status === "VERIFIED"}
-                      onClick={() => act("link", l.id, "VERIFIED")}
-                    >
-                      <Check className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="destructive"
-                      className="h-8 w-8"
-                      title="Reject"
-                      disabled={busyId === l.id || l.status === "REJECTED"}
-                      onClick={() => act("link", l.id, "REJECTED")}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    {canScore && (
+                      <Button
+                        size="icon"
+                        className="h-8 w-8"
+                        title="Verify"
+                        disabled={busyId === l.id || l.status === "VERIFIED"}
+                        onClick={() => act("link", l.id, "VERIFIED")}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {canScore && (
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        className="h-8 w-8"
+                        title="Reject"
+                        disabled={busyId === l.id || l.status === "REJECTED"}
+                        onClick={() => act("link", l.id, "REJECTED")}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="outline"

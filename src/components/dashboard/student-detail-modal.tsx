@@ -86,10 +86,12 @@ function diffRows(s: StudentDto) {
 
 export function StudentDetailModal({
   studentId,
+  canScore = true,
   onClose,
   onChanged,
 }: {
   studentId: string;
+  canScore?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -415,6 +417,7 @@ export function StudentDetailModal({
                   <VerificationPanel
                     documents={student.documents}
                     links={student.projectLinks}
+                    canScore={canScore}
                     onChanged={async () => {
                       const res = await fetch(`/api/students/${studentId}`, { cache: "no-store" });
                       if (res.ok) setStudent((await res.json()).student);
@@ -424,7 +427,7 @@ export function StudentDetailModal({
               )}
 
               {/* Score entry panel */}
-              <section>
+              <section className={canScore ? undefined : "hidden"}>
                 <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                   Score entry (out of 100)
                 </h3>
@@ -469,10 +472,10 @@ export function StudentDetailModal({
                       className="h-9 w-full"
                     />
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <Button variant="outline" className="w-full sm:w-auto" onClick={() => save(false)} disabled={saving}>
+                      <Button variant="outline" className="w-full sm:w-auto" onClick={() => save(false)} disabled={saving || !canScore}>
                         Save as pending
                       </Button>
-                      <Button className="w-full sm:w-auto" onClick={() => save(true)} disabled={saving}>
+                      <Button className="w-full sm:w-auto" onClick={() => save(true)} disabled={saving || !canScore}>
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                         Save &amp; verify
                       </Button>

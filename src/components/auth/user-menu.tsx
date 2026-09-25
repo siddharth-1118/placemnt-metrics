@@ -9,7 +9,12 @@ import { Button } from "@/components/ui";
 export function UserMenu({
   user,
 }: {
-  user: { fullName: string; role: string; evaluatorAssigned: boolean } | null;
+  user: {
+    fullName: string;
+    role: string;
+    isSuperAdmin?: boolean;
+    evaluatorAssigned: boolean;
+  } | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -38,9 +43,11 @@ export function UserMenu({
 
   const roleLabel =
     user.role === "COORDINATOR"
-      ? user.evaluatorAssigned
-        ? "Evaluator"
-        : "Coordinator"
+      ? user.isSuperAdmin
+        ? "Super admin"
+        : user.evaluatorAssigned
+          ? "Evaluator"
+          : "Coordinator"
       : "Student";
 
   return (

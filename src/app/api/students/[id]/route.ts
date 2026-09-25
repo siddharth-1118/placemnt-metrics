@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
 
-  const isEvaluator = user.role === "COORDINATOR" && user.evaluatorAssigned;
+  const isEvaluator = user.canViewSubmissions;
   const isSelf = user.id === params.id;
   if (!isEvaluator && !isSelf) {
     return NextResponse.json(
@@ -36,14 +36,20 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 }
 
 /**
- * DELETE /api/students/:id — assigned evaluator only.
+ * DELETE /api/students/:id — super admin only.
  * Permanently removes the profile: DB row (scrapes, documents, links and
  * notifications cascade), every uploaded file in Supabase Storage, and any
  * still-pending password-reset requests filed with this email.
  */
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const { error } = await requireEvaluator();
+  const { user, error } = await requireEvaluator();
   if (error) return error;
+  if (!user.isSuperAdmin) {
+    return NextResponse.json(
+      { error: "Only the super admin can delete a student profile" },
+      { status: 403 }
+    );
+  }
 
   const student = await prisma.student.findUnique({
     where: { id: params.id },

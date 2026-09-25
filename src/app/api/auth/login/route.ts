@@ -49,7 +49,10 @@ export async function POST(req: Request) {
         email: s.email,
         registerNumber: s.registerNumber,
         role: s.role,
-        evaluatorAssigned: s.evaluatorAssigned,
+        isSuperAdmin: s.isSuperAdmin,
+        evaluatorAssigned: s.isSuperAdmin || (s.role === "COORDINATOR" && (s.canViewSubmissions || s.canScore)),
+        canViewSubmissions: s.isSuperAdmin || (s.role === "COORDINATOR" && (s.canViewSubmissions || s.canScore)),
+        canScore: s.isSuperAdmin || (s.role === "COORDINATOR" && s.canScore),
       },
       passwordClaimed: true,
     });
@@ -67,7 +70,10 @@ export async function POST(req: Request) {
       email: s.email,
       registerNumber: s.registerNumber,
       role: s.role,
-      evaluatorAssigned: s.evaluatorAssigned,
+      isSuperAdmin: s.isSuperAdmin,
+      evaluatorAssigned: s.isSuperAdmin || (s.role === "COORDINATOR" && (s.canViewSubmissions || s.canScore)),
+      canViewSubmissions: s.isSuperAdmin || (s.role === "COORDINATOR" && (s.canViewSubmissions || s.canScore)),
+      canScore: s.isSuperAdmin || (s.role === "COORDINATOR" && s.canScore),
     },
   });
 }
