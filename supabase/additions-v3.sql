@@ -31,9 +31,12 @@ SET "role"               = 'COORDINATOR',
     "canScore"           = true
 WHERE "email" = 'sv3824@srmist.edu.in';
 
--- 4. Migrate legacy scope keys: 'EXTRAS' bundled certs + hackathons +
---    memberships + SHL; expand it into the four explicit keys. Coordinators
---    already holding the new keys are left untouched.
+-- 4. Migrate legacy scope keys:
+--    • 'EXTRAS' bundled certs + hackathons + memberships + SHL → expand into
+--      those four explicit keys.
+--    • 'PROJECTS' used to cover both project and full-stack links → also
+--      grant the new FULLSTACK key.
+--    Coordinators already holding the new keys are left untouched.
 UPDATE "Student"
 SET "permissionScopes" = (
   SELECT COALESCE(jsonb_agg(DISTINCT k), '[]'::jsonb)::text
@@ -42,11 +45,15 @@ SET "permissionScopes" = (
     UNION
     SELECT unnest(ARRAY['CERTIFICATIONS','HACKATHONS','MEMBERSHIP','SHL'])
     WHERE "permissionScopes"::jsonb ? 'EXTRAS'
+    UNION
+    SELECT 'FULLSTACK'
+    WHERE "permissionScopes"::jsonb ? 'PROJECTS'
   ) expanded(k)
-  WHERE k IN ('ACADEMIC','GITHUB','CODING','PROJECTS','INTERNSHIP',
+  WHERE k IN ('ACADEMIC','GITHUB','CODING','PROJECTS','FULLSTACK','INTERNSHIP',
               'CERTIFICATIONS','HACKATHONS','MEMBERSHIP','SHL','INHOUSE')
 )
-WHERE "permissionScopes"::jsonb ? 'EXTRAS';
+WHERE "permissionScopes"::jsonb ? 'EXTRAS'
+   OR "permissionScopes"::jsonb ? 'PROJECTS';
 
 -- 5. Self-checks.
 -- A) Columns exist? → must list 4 rows.
@@ -65,3 +72,9 @@ WHERE "email" = 'sv3824@srmist.edu.in';
 SELECT "email", "permissionScopes"
 FROM "Student"
 WHERE "permissionScopes"::jsonb ? 'EXTRAS';
+
+-- D) Old PROJECTS holders gained FULLSTACK → must return 0 rows.
+SELECT "email", "permissionScopes"
+FROM "Student"
+WHERE "permissionScopes"::jsonb ? 'PROJECTS'
+  AND NOT "permissionScopes"::jsonb ? 'FULLSTACK';

@@ -9,6 +9,7 @@
  *   GITHUB         — GitHub profile evidence
  *   CODING         — LeetCode evidence
  *   PROJECTS       — project links (repos, demos, case studies)
+ *   FULLSTACK      — full-stack development project links
  *   INTERNSHIP     — internship proof documents
  *   CERTIFICATIONS — skills & global certification uploads
  *   HACKATHONS     — coding competitions & hackathons (won / participated)
@@ -32,6 +33,7 @@ export const SCORE_SCOPE_KEYS = [
   "GITHUB",
   "CODING",
   "PROJECTS",
+  "FULLSTACK",
   "INTERNSHIP",
   "CERTIFICATIONS",
   "HACKATHONS",
@@ -51,6 +53,7 @@ export const SCORE_SCOPE_LABELS: Record<ScoreScope, string> = {
   GITHUB: "GitHub",
   CODING: "LeetCode / coding",
   PROJECTS: "Project links",
+  FULLSTACK: "Full-stack development",
   INTERNSHIP: "Internships",
   CERTIFICATIONS: "Skills & global certifications",
   HACKATHONS: "Competitions & hackathons",
@@ -128,7 +131,8 @@ export const SCORE_FIELD_SCOPES: Record<string, ScoreScope[]> = {
   academic: ["ACADEMIC"],
   github: ["GITHUB"],
   coding: ["CODING"],
-  projects: ["PROJECTS"],
+  // The combined projects score field covers both link sections.
+  projects: ["PROJECTS", "FULLSTACK"],
   internship: ["INTERNSHIP"],
   extras: ["CERTIFICATIONS", "HACKATHONS", "MEMBERSHIP", "SHL"],
 };
@@ -164,7 +168,7 @@ export const DOC_CATEGORY_SCOPE: Record<string, ScoreScope> = {
 /** Which scope each project-link category belongs to. */
 export const LINK_CATEGORY_SCOPE: Record<string, ScoreScope> = {
   PROJECT: "PROJECTS",
-  FULLSTACK_PROJECT: "PROJECTS",
+  FULLSTACK_PROJECT: "FULLSTACK",
   INHOUSE_PROJECT_LINK: "INHOUSE",
 };
 
