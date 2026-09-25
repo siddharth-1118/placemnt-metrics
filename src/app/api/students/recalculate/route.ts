@@ -54,9 +54,14 @@ export async function POST() {
       academic,
       github: s.scoreGithub > 0 ? s.scoreGithub : ghSuggested,
       coding: s.scoreCoding > 0 ? s.scoreCoding : lcSuggested,
-      projects: s.scoreProjects,
       internship: s.scoreInternship,
-      extras: s.scoreExtras,
+      certifications: s.scoreCertifications,
+      projects: s.scoreProjects,
+      fullstack: s.scoreFullstack,
+      hackathons: s.scoreHackathons,
+      inhouse: s.scoreInhouse,
+      membership: s.scoreMembership,
+      shl: s.scoreShl,
     });
 
     if (

@@ -74,9 +74,14 @@ export function toDto(
   scoreAcademic: number;
   scoreGithub: number;
   scoreCoding: number;
-  scoreProjects: number;
   scoreInternship: number;
-  scoreExtras: number;
+  scoreCertifications: number;
+  scoreProjects: number;
+  scoreFullstack: number;
+  scoreHackathons: number;
+  scoreInhouse: number;
+  scoreMembership: number;
+  scoreShl: number;
   totalScore: number;
   rank: number | null;
   createdAt: Date;
@@ -128,9 +133,14 @@ export function toDto(
       academic: s.scoreAcademic,
       github: s.scoreGithub,
       coding: s.scoreCoding,
-      projects: s.scoreProjects,
       internship: s.scoreInternship,
-      extras: s.scoreExtras,
+      certifications: s.scoreCertifications,
+      projects: s.scoreProjects,
+      fullstack: s.scoreFullstack,
+      hackathons: s.scoreHackathons,
+      inhouse: s.scoreInhouse,
+      membership: s.scoreMembership,
+      shl: s.scoreShl,
     }),
     rank: s.rank,
     createdAt: s.createdAt.toISOString(),

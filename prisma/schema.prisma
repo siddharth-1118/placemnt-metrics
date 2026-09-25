@@ -85,13 +85,18 @@ model Student {
   documents      Document[]
   projectLinks   ProjectLink[]
 
-  // Scores (rubric out of 100)
-  scoreAcademic   Float   @default(0) // max 40 (10th:10, 12th:10, CGPA:20)
-  scoreGithub     Float   @default(0) // max 15
-  scoreCoding     Float   @default(0) // max 10 (LeetCode)
-  scoreProjects   Float   @default(0) // max 10
-  scoreInternship Float   @default(0) // max 10
-  scoreExtras     Float   @default(0) // max 15 (certifications, OSS, communication)
+  // Scores — official AO1 rubric out of 100 (Placement Cell PPT)
+  scoreAcademic      Float @default(0) // max 10 (10th 2.5 · 12th 2.5 · CGPA 5)
+  scoreGithub        Float @default(0) // max 15
+  scoreCoding        Float @default(0) // max 10 (LeetCode · CodeChef · …)
+  scoreInternship    Float @default(0) // max 10
+  scoreCertifications Float @default(0) // max 15 (global 5 · NPTEL 2 · Coursera 1)
+  scoreProjects      Float @default(0) // max 5 (max 3 projects)
+  scoreFullstack     Float @default(0) // max 5 (one FSD project = 5)
+  scoreHackathons    Float @default(0) // max 10 (1st 5 · 2nd 4 · 3rd 3 · part. 1)
+  scoreInhouse       Float @default(0) // max 8 (UROP/SERI 4 each · max 2)
+  scoreMembership    Float @default(0) // max 2 (valid membership = 2)
+  scoreShl           Float @default(0) // max 10 (score bands)
   totalScore      Float   @default(0)
   /// Placement rank (1 = best) among all students with a total score; ties share a rank
   rank            Int?

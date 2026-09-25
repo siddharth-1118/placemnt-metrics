@@ -121,22 +121,21 @@ export function hasScope(
 export const hasScopeClient = hasScope;
 
 /**
- * Which rubric score field is writable with which section scopes. A
- * coordinator holding ANY ONE of a field's scopes may write that field:
- * a section coordinator does BOTH — verifies the section's evidence AND
- * enters its marks. Fields shared by several sections (projects, extras)
- * are edited in the same input by every section holder, so the UI shows a
- * "shared score" hint there.
+ * Each rubric score field is owned by exactly one section — a section
+ * coordinator verifies that section's evidence AND enters its marks.
  */
 export const SCORE_FIELD_SCOPES: Record<string, ScoreScope[]> = {
   academic: ["ACADEMIC"],
   github: ["GITHUB"],
   coding: ["CODING"],
-  // Projects + Full-stack development share the projects score field.
-  projects: ["PROJECTS", "FULLSTACK"],
+  projects: ["PROJECTS"],
+  fullstack: ["FULLSTACK"],
   internship: ["INTERNSHIP"],
-  // Certs + hackathons + memberships + SHL share the extras score field.
-  extras: ["CERTIFICATIONS", "HACKATHONS", "MEMBERSHIP", "SHL"],
+  certifications: ["CERTIFICATIONS"],
+  hackathons: ["HACKATHONS"],
+  inhouse: ["INHOUSE"],
+  membership: ["MEMBERSHIP"],
+  shl: ["SHL"],
 };
 
 /** May this user write the given rubric score field? */

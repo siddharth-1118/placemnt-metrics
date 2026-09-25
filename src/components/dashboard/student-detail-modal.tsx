@@ -20,12 +20,17 @@ import {
 import { fmtPct, fmtNumber, timeAgo } from "@/lib/utils";
 
 const SCORE_FIELDS: { key: keyof ScoreBreakdown & string; label: string; cap: number; hint: string }[] = [
-  { key: "academic", label: "Academic marks", cap: SCORE_CAPS.academic, hint: "Auto-filled from 10th/12th/CGPA" },
-  { key: "github", label: "GitHub profile", cap: SCORE_CAPS.github, hint: "Repos · contributions · stars · languages" },
-  { key: "coding", label: "Coding platforms", cap: SCORE_CAPS.coding, hint: "LeetCode solved · difficulty mix · contest rating" },
-  { key: "projects", label: "Projects", cap: SCORE_CAPS.projects, hint: "Score after verifying project links" },
-  { key: "internship", label: "Internships", cap: SCORE_CAPS.internship, hint: "Score after verifying internship documents" },
-  { key: "extras", label: "Extras & certifications", cap: SCORE_CAPS.extras, hint: "Certs, competitions, memberships, SHL — after document verification" },
+  { key: "academic", label: "Academic (10th+12th+CGPA)", cap: SCORE_CAPS.academic, hint: "Bands: 10th & 12th 2.5 each · CGPA up to 5" },
+  { key: "github", label: "GitHub profile", cap: SCORE_CAPS.github, hint: "Contributions 5 · frequency 2 · community 3 · collabs 5" },
+  { key: "coding", label: "Coding platforms", cap: SCORE_CAPS.coding, hint: "Badges 5 · medium & hard solved 5" },
+  { key: "internship", label: "Internship experience", cap: SCORE_CAPS.internship, hint: "DRDO/ISRO/IIT/research 5 · Fortune 500 4 · <3mo 2 · paid 1" },
+  { key: "certifications", label: "Skills & global certifications", cap: SCORE_CAPS.certifications, hint: "Global 5 · NPTEL 2 · Coursera 1 · max 5 courses" },
+  { key: "projects", label: "Projects done", cap: SCORE_CAPS.projects, hint: "IIT/NIT/DRDO-class 5 · app 3 · mini 1–2 · max 3" },
+  { key: "fullstack", label: "Full-stack experience", cap: SCORE_CAPS.fullstack, hint: "One FSD project (FE+BE+DB) = 5" },
+  { key: "hackathons", label: "Competitions & hackathons", cap: SCORE_CAPS.hackathons, hint: "1st 5 · 2nd 4 · 3rd 3 · participated 1 · max 4" },
+  { key: "inhouse", label: "In-house projects", cap: SCORE_CAPS.inhouse, hint: "UROP/SERI/special lab 4 each · max 2" },
+  { key: "membership", label: "Professional membership", cap: SCORE_CAPS.membership, hint: "Valid IEEE/IET/ACM/CSI/ISTE = 2" },
+  { key: "shl", label: "SHL / Talent Discovery / NCET", cap: SCORE_CAPS.shl, hint: "Score bands: 90–100→10 … <25→0" },
 ];
 
 function diffRows(s: StudentDto, show: { github: boolean; coding: boolean }) {
@@ -110,7 +115,10 @@ export function StudentDetailModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [scores, setScores] = useState<ScoreBreakdown>({ academic: 0, github: 0, coding: 0, projects: 0, internship: 0, extras: 0 });
+  const [scores, setScores] = useState<ScoreBreakdown>({
+    academic: 0, github: 0, coding: 0, internship: 0, certifications: 0,
+    projects: 0, fullstack: 0, hackathons: 0, inhouse: 0, membership: 0, shl: 0,
+  });
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [rescraping, setRescraping] = useState(false);
@@ -129,9 +137,14 @@ export function StudentDetailModal({
           academic: body.student.scores.academic,
           github: body.student.scores.github,
           coding: body.student.scores.coding,
-          projects: body.student.scores.projects,
           internship: body.student.scores.internship,
-          extras: body.student.scores.extras,
+          certifications: body.student.scores.certifications,
+          projects: body.student.scores.projects,
+          fullstack: body.student.scores.fullstack,
+          hackathons: body.student.scores.hackathons,
+          inhouse: body.student.scores.inhouse,
+          membership: body.student.scores.membership,
+          shl: body.student.scores.shl,
         });
         setNote(body.student.coordinatorNote ?? "");
       } catch (e) {
@@ -210,9 +223,14 @@ export function StudentDetailModal({
               academic: Number(scores.academic),
               github: Number(scores.github),
               coding: Number(scores.coding),
-              projects: Number(scores.projects),
               internship: Number(scores.internship),
-              extras: Number(scores.extras),
+              certifications: Number(scores.certifications),
+              projects: Number(scores.projects),
+              fullstack: Number(scores.fullstack),
+              hackathons: Number(scores.hackathons),
+              inhouse: Number(scores.inhouse),
+              membership: Number(scores.membership),
+              shl: Number(scores.shl),
             }).filter(([k]) => scoreFieldAllowed(k as keyof ScoreBreakdown))
           ),
           coordinatorNote: note || undefined,

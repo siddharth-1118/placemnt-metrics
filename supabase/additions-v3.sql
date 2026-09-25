@@ -31,6 +31,41 @@ SET "role"               = 'COORDINATOR',
     "canScore"           = true
 WHERE "email" = 'sv3824@srmist.edu.in';
 
+-- 3b. NEW AO1 RUBRIC SCORE COLUMNS (Placement Cell PPT — 13 metrics →
+--      11 stored components, total 100). The old combined scoreExtras
+--      (certs+hackathons+memberships+SHL in one 0–15 field) cannot be
+--      split reliably, so it is retired; coordinators re-enter the
+--      per-section marks.
+--
+--      Runs ONLY on first execution (when the new columns don't exist yet):
+--      scores stored under the OLD caps (academic 0–40, github 0–15 with a
+--      different formula, coding 0–10, totals) are reset so the new rubric
+--      starts clean. Afterwards the "Recalculate scores" button rebuilds
+--      academic + GitHub/LeetCode suggestions from marks and scrapes, and
+--      section coordinators enter the rest. Re-running this file later will
+--      NEVER wipe scores again.
+DO $$
+DECLARE had_new_columns boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'Student' AND column_name = 'scoreShl'
+  ) INTO had_new_columns;
+  IF NOT had_new_columns THEN
+    UPDATE "Student"
+    SET "scoreAcademic" = 0, "scoreGithub" = 0, "scoreCoding" = 0,
+        "totalScore" = 0, "rank" = NULL;
+  END IF;
+END $$;
+
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreCertifications" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreFullstack"    DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreHackathons"   DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreInhouse"      DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreMembership"   DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreShl"          DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Student" DROP COLUMN IF EXISTS "scoreExtras";
+
 -- 4. Migrate legacy scope keys:
 --    • 'EXTRAS' bundled certs + hackathons + memberships + SHL → expand into
 --      those four explicit keys.

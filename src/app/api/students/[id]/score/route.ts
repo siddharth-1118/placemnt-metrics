@@ -14,9 +14,14 @@ const scoreSchema = z.object({
       academic: z.coerce.number().optional(),
       github: z.coerce.number().optional(),
       coding: z.coerce.number().optional(),
-      projects: z.coerce.number().optional(),
       internship: z.coerce.number().optional(),
-      extras: z.coerce.number().optional(),
+      certifications: z.coerce.number().optional(),
+      projects: z.coerce.number().optional(),
+      fullstack: z.coerce.number().optional(),
+      hackathons: z.coerce.number().optional(),
+      inhouse: z.coerce.number().optional(),
+      membership: z.coerce.number().optional(),
+      shl: z.coerce.number().optional(),
     })
     .optional(),
   verify: z.boolean().optional(),
@@ -49,13 +54,11 @@ export async function PATCH(
   const parsed = scoreSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid payload", issues: parsed.error.issues }, { status: 422 });
-  }
+  }  const incoming = parsed.data.scores ?? {};
 
-  const incoming = parsed.data.scores ?? {};
-
-  // Scoped coordinators may only write their assigned rubric sections (the
-  // combined extras field needs all four of its sub-sections). Super admins
-  // and coordinators with no scope restrictions pass every check.
+  // Scoped coordinators may only write their assigned rubric sections (1:1
+  // with the submission sections). Super admins and coordinators with no
+  // scope restrictions pass every check.
   for (const key of Object.keys(incoming)) {
     if (!canWriteScoreField(user, key)) {
       return NextResponse.json(
@@ -64,14 +67,20 @@ export async function PATCH(
       );
     }
   }
+
   // Merge with existing scores so partial updates are supported.
   const merged = {
     academic: incoming.academic ?? student.scoreAcademic,
     github: incoming.github ?? student.scoreGithub,
     coding: incoming.coding ?? student.scoreCoding,
-    projects: incoming.projects ?? student.scoreProjects,
     internship: incoming.internship ?? student.scoreInternship,
-    extras: incoming.extras ?? student.scoreExtras,
+    certifications: incoming.certifications ?? student.scoreCertifications,
+    projects: incoming.projects ?? student.scoreProjects,
+    fullstack: incoming.fullstack ?? student.scoreFullstack,
+    hackathons: incoming.hackathons ?? student.scoreHackathons,
+    inhouse: incoming.inhouse ?? student.scoreInhouse,
+    membership: incoming.membership ?? student.scoreMembership,
+    shl: incoming.shl ?? student.scoreShl,
   };
   const clamped = clampScores(merged);
 
@@ -81,9 +90,14 @@ export async function PATCH(
       scoreAcademic: clamped.academic,
       scoreGithub: clamped.github,
       scoreCoding: clamped.coding,
-      scoreProjects: clamped.projects,
       scoreInternship: clamped.internship,
-      scoreExtras: clamped.extras,
+      scoreCertifications: clamped.certifications,
+      scoreProjects: clamped.projects,
+      scoreFullstack: clamped.fullstack,
+      scoreHackathons: clamped.hackathons,
+      scoreInhouse: clamped.inhouse,
+      scoreMembership: clamped.membership,
+      scoreShl: clamped.shl,
       totalScore: clamped.total,
       status: parsed.data.verify === undefined ? student.status : parsed.data.verify ? "VERIFIED" : "PENDING",
       coordinatorNote: parsed.data.coordinatorNote ?? student.coordinatorNote,
@@ -121,9 +135,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       academic: student.scoreAcademic,
       github: student.scoreGithub,
       coding: student.scoreCoding,
-      projects: student.scoreProjects,
       internship: student.scoreInternship,
-      extras: student.scoreExtras,
+      certifications: student.scoreCertifications,
+      projects: student.scoreProjects,
+      fullstack: student.scoreFullstack,
+      hackathons: student.scoreHackathons,
+      inhouse: student.scoreInhouse,
+      membership: student.scoreMembership,
+      shl: student.scoreShl,
     }),
     caps: SCORE_CAPS,
   });
