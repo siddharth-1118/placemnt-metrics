@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser, hashPassword } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth";
 import { parseScopes, serializeScopes, SCORE_SCOPE_KEYS } from "@/lib/scopes";
 
 export const dynamic = "force-dynamic";
@@ -10,12 +10,13 @@ export const dynamic = "force-dynamic";
  * Super-admin-only coordinator management.
  *
  * The super admin can:
- *  - create coordinator accounts by email (+ name + initial password),
+ *  - assign an EXISTING student (someone who submitted a profile) as a
+ *    coordinator — no passwords are created or shared; the promoted student
+ *    signs in with the email + password they already have,
  *  - grant/revoke what each coordinator can see and do
- *    (view submissions / score & verify),
- *  - delete coordinator accounts.
- *
- * Students (role !== COORDINATOR) are never listed or mutated here.
+ *    (view submissions / score & verify / per-section scopes),
+ *  - revoke coordinator access (the account returns to a normal student and
+ *    their submission is kept — nothing is deleted).
  */
 
 const scopesSchema = z
@@ -23,17 +24,9 @@ const scopesSchema = z
   .max(SCORE_SCOPE_KEYS.length)
   .optional();
 
-const createSchema = z.object({
-  email: z.string().trim().toLowerCase().email("Enter a valid email").max(120),
-  fullName: z.string().trim().min(3, "Enter the coordinator's full name").max(80),
-  registerNumber: z
-    .string()
-    .trim()
-    .min(4, "Register number / staff ID is too short")
-    .max(20)
-    .regex(/^[A-Za-z0-9-]+$/, "Only letters, digits and hyphens")
-    .transform((v) => v.toUpperCase()),
-  password: z.string().min(8, "Initial password must be at least 8 characters").max(100),
+const assignSchema = z.object({
+  // Email of an existing submission — the account is promoted, never created.
+  email: z.string().trim().toLowerCase().email("Enter the student's email").max(120),
   // Which rubric sections this coordinator can view & score. Omitted/empty = ALL.
   permissionScopes: scopesSchema,
   // Explicitly grant scoring even with no section restrictions (full scorer).
@@ -49,7 +42,7 @@ const updateSchema = z.object({
   permissionScopes: scopesSchema,
 });
 
-const deleteSchema = z.object({ id: z.string().min(1) });
+const revokeSchema = z.object({ id: z.string().min(1) });
 
 async function requireSuperAdmin() {
   const user = await getSessionUser();
@@ -90,10 +83,33 @@ function coordinatorDto(s: {
   };
 }
 
-/** GET /api/admin/coordinators — list all coordinator accounts. */
-export async function GET() {
+/** GET /api/admin/coordinators            — list all coordinator accounts. */
+/** GET /api/admin/coordinators?search=xy  — find students eligible for assignment. */
+export async function GET(req: Request) {
   const { error } = await requireSuperAdmin();
   if (error) return error;
+
+  const search = new URL(req.url).searchParams.get("search")?.trim();
+  if (search) {
+    // Assignment picker: students who have submitted and are not already
+    // coordinators. Small batch, so filter in memory (case-insensitive).
+    const q = search.toLowerCase();
+    const rows = await prisma.student.findMany({
+      where: { role: { not: "COORDINATOR" } },
+      select: { id: true, email: true, fullName: true, registerNumber: true },
+      orderBy: { fullName: "asc" },
+      take: 2000,
+    });
+    const candidates = rows
+      .filter(
+        (s) =>
+          s.email.toLowerCase().includes(q) ||
+          s.registerNumber.toLowerCase().includes(q) ||
+          s.fullName.toLowerCase().includes(q)
+      )
+      .slice(0, 10);
+    return NextResponse.json({ candidates });
+  }
 
   const rows = await prisma.student.findMany({
     where: { role: "COORDINATOR" },
@@ -102,7 +118,13 @@ export async function GET() {
   return NextResponse.json({ coordinators: rows.map(coordinatorDto) });
 }
 
-/** POST /api/admin/coordinators — create a coordinator account. */
+/**
+ * POST /api/admin/coordinators — promote an existing student to coordinator.
+ * The student keeps their own email + password; nothing about their
+ * submission (marks, documents, scores) changes, except they now appear in
+ * the batch leaderboard as a candidate too (existing behaviour for
+ * coordinators with real marks).
+ */
 export async function POST(req: Request) {
   const { error } = await requireSuperAdmin();
   if (error) return error;
@@ -113,36 +135,32 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const parsed = createSchema.safeParse(body);
+  const parsed = assignSchema.safeParse(body);
   if (!parsed.success) {
     const fe: Record<string, string> = {};
     for (const i of parsed.error.issues) fe[i.path.join(".") || "form"] = i.message;
     return NextResponse.json({ error: "Validation failed", fieldErrors: fe }, { status: 422 });
   }
 
-  const { email, fullName, registerNumber, password } = parsed.data;
-
-  const clash =
-    (await prisma.student.findUnique({ where: { email }, select: { id: true } })) ??
-    (await prisma.student.findUnique({ where: { registerNumber }, select: { id: true } }));
-  if (clash) {
+  const { email } = parsed.data;
+  const student = await prisma.student.findUnique({ where: { email } });
+  if (!student) {
     return NextResponse.json(
-      { error: "An account with this email or register number already exists" },
+      { error: "No submission found with this email — only students who submitted their application can be assigned." },
+      { status: 404 }
+    );
+  }
+  if (student.role === "COORDINATOR") {
+    return NextResponse.json(
+      { error: `${student.fullName} is already a coordinator.` },
       { status: 409 }
     );
   }
 
   const scopes = parsed.data.permissionScopes ?? [];
-  const created = await prisma.student.create({
+  const promoted = await prisma.student.update({
+    where: { id: student.id },
     data: {
-      email,
-      fullName,
-      registerNumber,
-      // Placeholder marks — coordinator accounts are not placement candidates
-      // unless they submit their own profile.
-      tenthPercent: 0,
-      twelfthPercent: 0,
-      cgpa: 0,
       role: "COORDINATOR",
       evaluatorAssigned: true,
       canViewSubmissions: true,
@@ -151,11 +169,10 @@ export async function POST(req: Request) {
       // (full scorer).
       canScore: parsed.data.canScore ?? scopes.length > 0,
       permissionScopes: serializeScopes(scopes),
-      passwordHash: hashPassword(password),
     },
   });
 
-  return NextResponse.json({ coordinator: coordinatorDto(created) }, { status: 201 });
+  return NextResponse.json({ coordinator: coordinatorDto(promoted) }, { status: 201 });
 }
 
 /** PATCH /api/admin/coordinators — grant/revoke permissions. */
@@ -211,7 +228,13 @@ export async function PATCH(req: Request) {
   return NextResponse.json({ coordinator: coordinatorDto(updated) });
 }
 
-/** DELETE /api/admin/coordinators — remove a coordinator account. */
+/**
+ * DELETE /api/admin/coordinators — revoke coordinator access.
+ * The account DEMOTES back to a normal student: their submission, marks,
+ * documents and password all stay. Nothing is deleted. (Promoted accounts
+ * carry real submissions behind them, so destroying the row here would
+ * erase a student's application.)
+ */
 export async function DELETE(req: Request) {
   const { user, error } = await requireSuperAdmin();
   if (error) return error;
@@ -222,7 +245,7 @@ export async function DELETE(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const parsed = deleteSchema.safeParse(body);
+  const parsed = revokeSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Validation failed" }, { status: 422 });
   }
@@ -233,14 +256,23 @@ export async function DELETE(req: Request) {
   }
   if (target.isSuperAdmin) {
     return NextResponse.json(
-      { error: "A super admin account cannot be deleted from the portal" },
+      { error: "A super admin account cannot be revoked from the portal" },
       { status: 403 }
     );
   }
   if (target.id === user.id) {
-    return NextResponse.json({ error: "You cannot delete your own account" }, { status: 400 });
+    return NextResponse.json({ error: "You cannot revoke your own access" }, { status: 400 });
   }
 
-  await prisma.student.delete({ where: { id: target.id } });
+  await prisma.student.update({
+    where: { id: target.id },
+    data: {
+      role: "STUDENT",
+      evaluatorAssigned: false,
+      canViewSubmissions: false,
+      canScore: false,
+      permissionScopes: "[]",
+    },
+  });
   return NextResponse.json({ ok: true });
 }

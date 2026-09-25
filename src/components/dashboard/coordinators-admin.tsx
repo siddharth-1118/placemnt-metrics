@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Check, KeyRound, Loader2, Mail, ShieldAlert, Trash2, UserPlus, X,
+  Check, KeyRound, Loader2, Mail, Search, ShieldAlert, ShieldOff, UserPlus, X,
 } from "lucide-react";
 import { Badge, Button, Card, CardContent, Input, Label } from "@/components/ui";
 import { SCORE_SCOPE_KEYS, SCORE_SCOPE_LABELS, type ScoreScope } from "@/lib/scopes";
@@ -21,29 +21,37 @@ interface CoordinatorDto {
   createdAt: string;
 }
 
+interface Candidate {
+  id: string;
+  email: string;
+  fullName: string;
+  registerNumber: string;
+}
+
 /**
- * Super-admin panel: create coordinator accounts by email and control what
- * each one can see and do —
+ * Super-admin panel: assign coordinators from students who already submitted
+ * (they keep their own email + password — no initial passwords), and control
+ * what each one can see and do —
  *   • View submissions — open the leaderboard and inspect student profiles.
  *   • Score & verify   — enter marks and verify documents/links (implies view).
  *   • Sections         — restrict them to specific rubric sections (e.g. only
- *                        GitHub, or only hackathon/extras documents). No
- *                        sections selected = full access to everything.
- * Nobody else can see this panel; the API enforces it too.
+ *                        GitHub, or only hackathon documents under Extras).
+ *                        No sections selected = full access.
+ * Revoking returns the account to a normal student; their submission is kept.
  */
 export function CoordinatorsAdmin() {
   const [rows, setRows] = useState<CoordinatorDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Create form
-  const [email, setEmail] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [regNo, setRegNo] = useState("");
-  const [password, setPassword] = useState("");
+  // Assignment form
+  const [query, setQuery] = useState("");
+  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [picked, setPicked] = useState<Candidate | null>(null);
   const [newScopes, setNewScopes] = useState<ScoreScope[]>([]);
   const [newCanScore, setNewCanScore] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [createdMsg, setCreatedMsg] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState(false);
+  const [assignMsg, setAssignMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -62,33 +70,60 @@ export function CoordinatorsAdmin() {
     load();
   }, [load]);
 
-  async function create() {
+  // Debounced candidate search
+  useEffect(() => {
+    if (!query.trim()) {
+      setCandidates(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(
+          `/api/admin/coordinators?search=${encodeURIComponent(query.trim())}`,
+          { cache: "no-store" }
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error ?? "Search failed");
+        setCandidates(body.candidates);
+      } catch (e) {
+        setError((e as Error).message);
+        setCandidates([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  async function assign() {
+    if (!picked) return;
     setError(null);
-    setCreatedMsg(null);
-    setCreating(true);
+    setAssignMsg(null);
+    setAssigning(true);
     try {
       const res = await fetch("/api/admin/coordinators", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: email.trim(),
-          fullName: fullName.trim(),
-          registerNumber: regNo.trim(),
-          password,
+          email: picked.email,
           permissionScopes: newScopes,
           canScore: newScopes.length > 0 ? undefined : newCanScore,
         }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error ?? "Could not create the coordinator");
-      setCreatedMsg(`${body.coordinator.fullName} (${body.coordinator.email}) can now sign in.`);
-      setEmail(""); setFullName(""); setRegNo(""); setPassword("");
-      setNewScopes([]); setNewCanScore(false);
+      if (!res.ok) throw new Error(body?.error ?? "Could not assign the coordinator");
+      setAssignMsg(`${body.coordinator.fullName} can now sign in as a coordinator with their existing password.`);
+      setPicked(null);
+      setQuery("");
+      setCandidates(null);
+      setNewScopes([]);
+      setNewCanScore(false);
       await load();
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setCreating(false);
+      setAssigning(false);
     }
   }
 
@@ -120,13 +155,11 @@ export function CoordinatorsAdmin() {
     const next = has
       ? c.permissionScopes.filter((s) => s !== scope)
       : [...c.permissionScopes, scope];
-    // Gaining the first scope also grants Score & verify (server does this too);
-    // clearing the last scope returns the coordinator to full access.
     setPerm(c, { permissionScopes: next });
   }
 
-  async function remove(c: CoordinatorDto) {
-    if (!window.confirm(`Delete coordinator account ${c.fullName} (${c.email})?\n\nThey will no longer be able to sign in. Student submissions are not affected.`)) return;
+  async function revoke(c: CoordinatorDto) {
+    if (!window.confirm(`Revoke coordinator access for ${c.fullName} (${c.email})?\n\nThey return to a normal student account — their submission and password are kept.`)) return;
     setError(null);
     try {
       const res = await fetch("/api/admin/coordinators", {
@@ -135,7 +168,7 @@ export function CoordinatorsAdmin() {
         body: JSON.stringify({ id: c.id }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error ?? "Could not delete the coordinator");
+      if (!res.ok) throw new Error(body?.error ?? "Could not revoke access");
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -221,12 +254,12 @@ export function CoordinatorsAdmin() {
         </div>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Create coordinator accounts by email and choose exactly what each one can see and do.
-          <strong className="text-foreground/80"> View submissions</strong> opens the leaderboard and
-          student profiles; <strong className="text-foreground/80">Score &amp; verify</strong> also
-          allows entering marks and reviewing documents; the{" "}
-          <strong className="text-foreground/80">section chips</strong> restrict a coordinator to
-          specific rubric sections (e.g. only GitHub, or only hackathons &amp; certificates under
+          Assign coordinators from students who already submitted — they sign in with the
+          email and password they registered with (no passwords are created or shared).
+          <strong className="text-foreground/80"> View submissions</strong> opens the leaderboard;
+          <strong className="text-foreground/80"> Score &amp; verify</strong> also allows marks and
+          document review; the <strong className="text-foreground/80">section chips</strong> restrict
+          a coordinator to specific rubric sections (e.g. only GitHub, or only hackathons under
           Extras). Leaving every section unselected means full access.
         </p>
 
@@ -236,68 +269,116 @@ export function CoordinatorsAdmin() {
           </div>
         )}
 
-        {/* Create coordinator */}
+        {/* Assign coordinator */}
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5">
           <p className="flex items-center gap-1.5 text-sm font-medium">
-            <UserPlus className="h-4 w-4 text-primary" /> Add a coordinator
+            <UserPlus className="h-4 w-4 text-primary" /> Assign a coordinator
           </p>
-          <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Full name</Label>
-              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Dr. Jane Doe" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Email</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane.doe@srmist.edu.in" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Register no. / staff ID</Label>
-              <Input value={regNo} onChange={(e) => setRegNo(e.target.value.toUpperCase())} placeholder="COORD-FACULTY-02" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Initial password (≥ 8 chars)</Label>
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set a temporary password" />
-            </div>
-          </div>
 
-          {/* Section access for the new coordinator */}
-          <div className="mt-3 space-y-1.5">
-            <Label className="text-xs">
-              Sections they can view &amp; score{" "}
-              <span className="font-normal text-muted-foreground">
-                (none selected = full access)
-              </span>
-            </Label>
-            <ScopeChips
-              scopes={newScopes}
-              onToggle={(s) =>
-                setNewScopes((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]))
-              }
-            />
-            {newScopes.length === 0 && (
-              <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={newCanScore}
-                  onChange={(e) => setNewCanScore(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+          {!picked ? (
+            <div className="mt-2.5">
+              <Label className="text-xs">Find a student by email, name or register number</Label>
+              <div className="relative mt-1">
+                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  placeholder="Type at least 2 characters…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
                 />
-                Also allow scoring &amp; verification of every section (full scorer)
-              </label>
-            )}
-          </div>
+              </div>
+              {searching && (
+                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Searching…
+                </p>
+              )}
+              {candidates !== null && !searching && (
+                <ul className="mt-1.5 space-y-1">
+                  {candidates.map((s) => (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPicked(s);
+                          setQuery("");
+                          setCandidates(null);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg border bg-card px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                      >
+                        <span className="font-medium">{s.fullName}</span>
+                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{s.registerNumber}</span>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Mail className="h-3 w-3" /> {s.email}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {candidates.length === 0 && (
+                    <li className="text-xs text-muted-foreground">
+                      No matching students — only students who submitted an application can be assigned.
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <div className="mt-2.5 space-y-3">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+                <span className="font-medium">{picked.fullName}</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{picked.registerNumber}</span>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Mail className="h-3 w-3" /> {picked.email}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto h-7"
+                  onClick={() => setPicked(null)}
+                >
+                  <X className="h-3.5 w-3.5" /> Change
+                </Button>
+              </div>
 
-          <div className="mt-2.5 flex items-center gap-2">
-            <Button size="sm" onClick={create} disabled={creating || !email.trim() || !fullName.trim() || !regNo.trim() || password.length < 8}>
-              {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
-              Create coordinator
-            </Button>
-            {createdMsg && (
-              <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-                <KeyRound className="h-3.5 w-3.5" /> {createdMsg}
-              </span>
-            )}
-          </div>
+              {/* Section access for the new coordinator */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">
+                  Sections they can view &amp; score{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (none selected = full access)
+                  </span>
+                </Label>
+                <ScopeChips
+                  scopes={newScopes}
+                  onToggle={(s) =>
+                    setNewScopes((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]))
+                  }
+                />
+                {newScopes.length === 0 && (
+                  <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={newCanScore}
+                      onChange={(e) => setNewCanScore(e.target.checked)}
+                      className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+                    />
+                    Also allow scoring &amp; verification of every section (full scorer)
+                  </label>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={assign} disabled={assigning}>
+                  {assigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
+                  Assign as coordinator
+                </Button>
+                {assignMsg && (
+                  <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                    <KeyRound className="h-3.5 w-3.5" /> {assignMsg}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Coordinator list */}
@@ -311,7 +392,6 @@ export function CoordinatorsAdmin() {
                 </span>
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{c.registerNumber}</span>
                 {c.isSuperAdmin && <Badge variant="warning">super admin</Badge>}
-                {c.awaitingClaim && <Badge variant="secondary">must sign in to claim password</Badge>}
                 <div className="ml-auto flex items-center gap-1.5">
                   <Toggle
                     on={c.canViewSubmissions}
@@ -332,10 +412,10 @@ export function CoordinatorsAdmin() {
                       size="icon"
                       variant="ghost"
                       className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      title="Delete coordinator account"
-                      onClick={() => remove(c)}
+                      title="Revoke coordinator access — the account returns to a normal student"
+                      onClick={() => revoke(c)}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <ShieldOff className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>
@@ -348,9 +428,6 @@ export function CoordinatorsAdmin() {
                     onToggle={(s) => toggleScope(c, s)}
                   />
                 </div>
-              )}
-              {!c.hasPassword && !c.awaitingClaim && (
-                <p className="mt-1 text-xs text-amber-600">No password set yet — they cannot sign in.</p>
               )}
             </li>
           ))}
