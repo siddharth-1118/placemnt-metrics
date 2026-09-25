@@ -6,6 +6,7 @@ import {
   canWriteScoreField,
   docCategoryScope,
   hasScope,
+  isSharedScoreField,
   linkCategoryScope,
   parseScopes,
   scopesAreFull,
@@ -141,7 +142,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
  * Server-side scope helpers — an API may pass any SessionUser-shaped object.
  * Super admin and coordinators with an empty scope list pass every check.
  */
-export { canWriteScoreField, hasScope, parseScopes, serializeScopes };
+export { canWriteScoreField, hasScope, isSharedScoreField, parseScopes, serializeScopes };
 export type { ScoreScope };
 
 /**

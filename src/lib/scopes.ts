@@ -121,19 +121,21 @@ export function hasScope(
 export const hasScopeClient = hasScope;
 
 /**
- * Which rubric score field is writable with which scopes. Most fields map to
- * their single section; the combined "extras" field (certs + hackathons +
- * memberships + SHL, max 15) requires ALL FOUR sections — a coordinator
- * assigned just one of them verifies that section's documents but cannot
- * rewrite the whole extras score.
+ * Which rubric score field is writable with which section scopes. A
+ * coordinator holding ANY ONE of a field's scopes may write that field:
+ * a section coordinator does BOTH — verifies the section's evidence AND
+ * enters its marks. Fields shared by several sections (projects, extras)
+ * are edited in the same input by every section holder, so the UI shows a
+ * "shared score" hint there.
  */
 export const SCORE_FIELD_SCOPES: Record<string, ScoreScope[]> = {
   academic: ["ACADEMIC"],
   github: ["GITHUB"],
   coding: ["CODING"],
-  // The combined projects score field covers both link sections.
+  // Projects + Full-stack development share the projects score field.
   projects: ["PROJECTS", "FULLSTACK"],
   internship: ["INTERNSHIP"],
+  // Certs + hackathons + memberships + SHL share the extras score field.
   extras: ["CERTIFICATIONS", "HACKATHONS", "MEMBERSHIP", "SHL"],
 };
 
@@ -142,9 +144,19 @@ export function canWriteScoreField(
   user: { isSuperAdmin: boolean; permissionScopes?: ScoreScope[] | null } | null | undefined,
   field: string
 ): boolean {
-  const required = SCORE_FIELD_SCOPES[field];
-  if (!required) return false;
-  return required.every((s) => hasScope(user, s));
+  const accepted = SCORE_FIELD_SCOPES[field];
+  if (!accepted) return false;
+  return accepted.some((s) => hasScope(user, s));
+}
+
+/** True when a score field is shared by sections the user only partly holds. */
+export function isSharedScoreField(
+  user: { isSuperAdmin: boolean; permissionScopes?: ScoreScope[] | null } | null | undefined,
+  field: string
+): boolean {
+  const accepted = SCORE_FIELD_SCOPES[field];
+  if (!accepted || accepted.length < 2) return false;
+  return !accepted.every((s) => hasScope(user, s));
 }
 
 /* ------------------------------- Category map ------------------------------ */

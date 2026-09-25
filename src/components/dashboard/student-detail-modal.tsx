@@ -13,6 +13,7 @@ import {
   canWriteScoreField,
   docCategoryScope,
   hasScopeClient,
+  isSharedScoreField,
   linkCategoryScope,
   type ScoreScope,
 } from "@/lib/scopes";
@@ -475,6 +476,14 @@ export function StudentDetailModal({
                       <div key={f.key} className="space-y-1">
                         <Label className="text-xs">
                           {f.label} <span className="text-muted-foreground">/ {f.cap}</span>
+                          {isSharedScoreField({ isSuperAdmin: false, permissionScopes }, f.key) && (
+                            <span
+                              className="ml-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600"
+                              title="This score is shared with coordinators of the other sections covered by it — coordinate before changing it"
+                            >
+                              shared score
+                            </span>
+                          )}
                         </Label>
                         <Input
                           type="number"
