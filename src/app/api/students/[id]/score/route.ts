@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { clampScores, assignRanks } from "@/lib/score";
+import { clampScores, assignRanks, autoScoresFor } from "@/lib/score";
 import { toDto } from "@/lib/dto";
 import { requireScorer, getSessionUser, canWriteScoreField } from "@/lib/auth";
 import { SCORE_CAPS } from "@/lib/types";
@@ -56,6 +56,19 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid payload", issues: parsed.error.issues }, { status: 422 });
   }  const incoming = parsed.data.scores ?? {};
 
+  // Academic, GitHub and Coding are system-calculated (band tables from
+  // marks + the live scrapes) — manual writes are rejected, even for the
+  // super admin.
+  const AUTO_FIELDS = ["academic", "github", "coding"] as const;
+  for (const key of AUTO_FIELDS) {
+    if (incoming[key] !== undefined) {
+      return NextResponse.json(
+        { error: `${key} marks are calculated automatically and cannot be entered manually` },
+        { status: 422 }
+      );
+    }
+  }
+
   // Scoped coordinators may only write their assigned rubric sections (1:1
   // with the submission sections). Super admins and coordinators with no
   // scope restrictions pass every check.
@@ -68,11 +81,13 @@ export async function PATCH(
     }
   }
 
-  // Merge with existing scores so partial updates are supported.
+  // Recompute the automatic components from marks + latest scrapes, merge
+  // coordinator-entered sections with existing values (partial updates).
+  const AUTO = await autoScoresFor(student.id);
   const merged = {
-    academic: incoming.academic ?? student.scoreAcademic,
-    github: incoming.github ?? student.scoreGithub,
-    coding: incoming.coding ?? student.scoreCoding,
+    academic: AUTO.academic,
+    github: AUTO.github,
+    coding: AUTO.coding,
     internship: incoming.internship ?? student.scoreInternship,
     certifications: incoming.certifications ?? student.scoreCertifications,
     projects: incoming.projects ?? student.scoreProjects,

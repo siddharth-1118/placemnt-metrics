@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireScorer } from "@/lib/auth";
-import { suggestAcademicScore, clampScores, assignRanks } from "@/lib/score";
+import { suggestAcademicScore, clampScores, assignRanks, autoScoresFor } from "@/lib/score";
 
 export const dynamic = "force-dynamic";
 
@@ -27,33 +27,14 @@ export async function POST() {
   const details: { registerNumber: string; academic: number; total: number }[] = [];
 
   for (const s of students) {
-    // Academic is always derivable from marks.
-    const academic = s.tenthPercent > 0 || s.twelfthPercent > 0 || s.cgpa > 0
-      ? suggestAcademicScore(s.tenthPercent, s.twelfthPercent, s.cgpa)
-      : 0;
-
-    // Platform scores: keep coordinator-entered values; refill zeros from scrapes.
-    const ghJob = s.scrapes.find((x) => x.platform === "GITHUB");
-    const lcJob = s.scrapes.find((x) => x.platform === "LEETCODE");
-    let ghSuggested = 0;
-    let lcSuggested = 0;
-    try {
-      if (ghJob?.status === "SUCCESS" && ghJob.dataJson) {
-        const { suggestGithubScore } = await import("@/lib/score");
-        ghSuggested = suggestGithubScore(JSON.parse(ghJob.dataJson));
-      }
-      if (lcJob?.status === "SUCCESS" && lcJob.dataJson) {
-        const { suggestCodingScore } = await import("@/lib/score");
-        lcSuggested = suggestCodingScore(JSON.parse(lcJob.dataJson));
-      }
-    } catch {
-      // corrupt payloads → treat as no data
-    }
+    // The three automatic components are always recomputed from source data
+    // (marks band tables + latest scrapes) — never coordinator-entered.
+    const auto = await autoScoresFor(s.id);
 
     const clamped = clampScores({
-      academic,
-      github: s.scoreGithub > 0 ? s.scoreGithub : ghSuggested,
-      coding: s.scoreCoding > 0 ? s.scoreCoding : lcSuggested,
+      academic: auto.academic,
+      github: auto.github,
+      coding: auto.coding,
       internship: s.scoreInternship,
       certifications: s.scoreCertifications,
       projects: s.scoreProjects,

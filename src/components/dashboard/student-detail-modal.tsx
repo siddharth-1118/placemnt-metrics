@@ -488,6 +488,13 @@ export function StudentDetailModal({
                 <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                   Score entry (out of 100)
                 </h3>
+                <p className="mb-2 rounded-lg border bg-accent/30 px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">Auto-calculated:</span>{" "}
+                  Academic {student.scores.academic.toFixed(1)}/{SCORE_CAPS.academic} (10th/12th/CGPA bands) · GitHub{" "}
+                  {student.scores.github.toFixed(1)}/{SCORE_CAPS.github} (live scrape) · Coding{" "}
+                  {student.scores.coding.toFixed(1)}/{SCORE_CAPS.coding} (live scrape). Enter the
+                  section marks below; totals and ranks update on save.
+                </p>
                   <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {SCORE_FIELDS.filter((f) => scoreFieldAllowed(f.key)).map((f) => (

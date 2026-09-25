@@ -93,6 +93,40 @@ export function suggestCodingScore(l?: LeetcodeScrapedData | null): number {
 }
 
 /**
+ * The three system-calculated components for a student, freshly derived:
+ * academic from stored marks (PPT band tables), GitHub and coding from the
+ * latest successful scrape payloads. The score API and the recalculate
+ * backfill both use this so the automatic components always agree.
+ */
+export async function autoScoresFor(
+  studentId: string
+): Promise<{ academic: number; github: number; coding: number }> {
+  const { prisma } = await import("@/lib/prisma");
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    include: { scrapes: true },
+  });
+  if (!student) return { academic: 0, github: 0, coding: 0 };
+
+  const academic =
+    student.tenthPercent > 0 || student.twelfthPercent > 0 || student.cgpa > 0
+      ? suggestAcademicScore(student.tenthPercent, student.twelfthPercent, student.cgpa)
+      : 0;
+
+  let github = 0;
+  let coding = 0;
+  try {
+    const gh = student.scrapes.find((s) => s.platform === "GITHUB");
+    const lc = student.scrapes.find((s) => s.platform === "LEETCODE");
+    if (gh?.status === "SUCCESS" && gh.dataJson) github = suggestGithubScore(JSON.parse(gh.dataJson));
+    if (lc?.status === "SUCCESS" && lc.dataJson) coding = suggestCodingScore(JSON.parse(lc.dataJson));
+  } catch {
+    // Corrupt payloads → zero; a re-scrape fills them back in.
+  }
+  return { academic, github, coding };
+}
+
+/**
  * Auto-apply the scraped GitHub / LeetCode suggestions for a student, filling
  * only scores that are still zero (fresh submissions). Coordinator-entered
  * scores are never overwritten. Recomputes the total from all 11 components
@@ -120,8 +154,10 @@ export async function applyAutoPlatformScores(studentId: string): Promise<void> 
 
   const clamped = clampScores({
     academic: student.scoreAcademic,
-    github: student.scoreGithub > 0 ? student.scoreGithub : suggestGithubScore(ghData),
-    coding: student.scoreCoding > 0 ? student.scoreCoding : suggestCodingScore(lcData),
+    // GitHub & coding are ALWAYS derived from the latest scrape payloads —
+    // they are system-calculated components, never coordinator-entered.
+    github: suggestGithubScore(ghData),
+    coding: suggestCodingScore(lcData),
     internship: student.scoreInternship,
     certifications: student.scoreCertifications,
     projects: student.scoreProjects,

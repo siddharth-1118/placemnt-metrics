@@ -121,17 +121,18 @@ export function hasScope(
 export const hasScopeClient = hasScope;
 
 /**
- * Each rubric score field is owned by exactly one section — a section
- * coordinator verifies that section's evidence AND enters its marks.
+ * Coordinator-writable score fields, one per section — a section coordinator
+ * verifies that section's evidence AND enters its marks.
+ *
+ * Academic, GitHub and Coding are NOT listed: they are calculated
+ * automatically (band tables from marks, and the live GitHub/LeetCode
+ * scrapes) and the score API rejects manual writes to them.
  */
 export const SCORE_FIELD_SCOPES: Record<string, ScoreScope[]> = {
-  academic: ["ACADEMIC"],
-  github: ["GITHUB"],
-  coding: ["CODING"],
-  projects: ["PROJECTS"],
-  fullstack: ["FULLSTACK"],
   internship: ["INTERNSHIP"],
   certifications: ["CERTIFICATIONS"],
+  projects: ["PROJECTS"],
+  fullstack: ["FULLSTACK"],
   hackathons: ["HACKATHONS"],
   inhouse: ["INHOUSE"],
   membership: ["MEMBERSHIP"],
