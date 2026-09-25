@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { clampScores, assignRanks } from "@/lib/score";
 import { toDto } from "@/lib/dto";
-import { requireScorer, getSessionUser, hasScope } from "@/lib/auth";
+import { requireScorer, getSessionUser, canWriteScoreField } from "@/lib/auth";
 import { SCORE_CAPS } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -53,19 +53,11 @@ export async function PATCH(
 
   const incoming = parsed.data.scores ?? {};
 
-  // Scoped coordinators may only write their assigned rubric sections.
-  // Super admins and coordinators with no scope restrictions pass every check.
-  const SCORE_SCOPE_OF = {
-    academic: "ACADEMIC",
-    github: "GITHUB",
-    coding: "CODING",
-    projects: "PROJECTS",
-    internship: "INTERNSHIP",
-    extras: "EXTRAS",
-  } as const;
-  for (const key of Object.keys(incoming) as (keyof typeof incoming & keyof typeof SCORE_SCOPE_OF)[]) {
-    const scope = SCORE_SCOPE_OF[key];
-    if (scope && !hasScope(user, scope)) {
+  // Scoped coordinators may only write their assigned rubric sections (the
+  // combined extras field needs all four of its sub-sections). Super admins
+  // and coordinators with no scope restrictions pass every check.
+  for (const key of Object.keys(incoming)) {
+    if (!canWriteScoreField(user, key)) {
       return NextResponse.json(
         { error: "You do not have permission to score this section" },
         { status: 403 }

@@ -2,19 +2,29 @@
  * Per-coordinator permission scopes.
  *
  * A coordinator's `permissionScopes` column stores a JSON array of scope keys
- * (see SCORE_SCOPE_KEYS). Each scope is a score rubric section the coordinator
- * may VIEW the evidence for and SCORE/verify.
+ * (see SCORE_SCOPE_KEYS). Each scope is a submission section the coordinator
+ * may VIEW the evidence for and SCORE/verify:
  *
- *   ACADEMIC   — 10th/12th/CGPA marks + marksheet documents
- *   GITHUB     — GitHub profile evidence
- *   CODING     — LeetCode evidence
- *   PROJECTS   — project links & in-house project documents
- *   INTERNSHIP — internship proof documents
- *   EXTRAS     — certifications, competitions & hackathons, memberships, SHL
+ *   ACADEMIC       — 10th/12th/CGPA marks + marksheet documents
+ *   GITHUB         — GitHub profile evidence
+ *   CODING         — LeetCode evidence
+ *   PROJECTS       — project links (repos, demos, case studies)
+ *   INTERNSHIP     — internship proof documents
+ *   CERTIFICATIONS — skills & global certification uploads
+ *   HACKATHONS     — coding competitions & hackathons (won / participated)
+ *   MEMBERSHIP     — professional body memberships
+ *   SHL            — SHL Talent Discovery assessment documents
+ *   INHOUSE        — in-house project documents & deployed links
  *
  * An EMPTY array means ALL sections (full access) — that is what the super
  * admin and previously-created coordinators have, so existing accounts keep
  * working unchanged after this feature ships.
+ *
+ * "EXTRAS" is a legacy scope key from the previous rubric (certs + hackathons
+ * + memberships + SHL bundled together). It is kept as an alias so old
+ * coordinator rows still work: a coordinator holding EXTRAS effectively has
+ * the four sections it used to cover. New assignments should use the explicit
+ * keys above.
  */
 
 export const SCORE_SCOPE_KEYS = [
@@ -23,30 +33,57 @@ export const SCORE_SCOPE_KEYS = [
   "CODING",
   "PROJECTS",
   "INTERNSHIP",
-  "EXTRAS",
+  "CERTIFICATIONS",
+  "HACKATHONS",
+  "MEMBERSHIP",
+  "SHL",
+  "INHOUSE",
 ] as const;
 
 export type ScoreScope = (typeof SCORE_SCOPE_KEYS)[number];
+
+/** Legacy scope (previous rubric) accepted when reading stored permissions. */
+export const LEGACY_SCOPE_KEYS = ["EXTRAS"] as const;
+export type LegacyScope = (typeof LEGACY_SCOPE_KEYS)[number];
 
 export const SCORE_SCOPE_LABELS: Record<ScoreScope, string> = {
   ACADEMIC: "Academic marks",
   GITHUB: "GitHub",
   CODING: "LeetCode / coding",
-  PROJECTS: "Projects",
+  PROJECTS: "Project links",
   INTERNSHIP: "Internships",
-  EXTRAS: "Extras (certs, hackathons)",
+  CERTIFICATIONS: "Skills & global certifications",
+  HACKATHONS: "Competitions & hackathons",
+  MEMBERSHIP: "Professional memberships",
+  SHL: "SHL assessment",
+  INHOUSE: "In-house projects",
 };
 
-/** Parse the stored JSON column; invalid/unknown entries are dropped. */
+/** Sections covered by the legacy EXTRAS scope. */
+export const LEGACY_EXTRAS_COVERS: ScoreScope[] = [
+  "CERTIFICATIONS",
+  "HACKATHONS",
+  "MEMBERSHIP",
+  "SHL",
+];
+
+/**
+ * Expand a stored scope list: unknown/invalid keys are dropped and the legacy
+ * EXTRAS alias is expanded into the four sections it covers (unless the list
+ * already names them explicitly).
+ */
 export function parseScopes(raw: string | null | undefined): ScoreScope[] {
   try {
     const parsed = JSON.parse(raw || "[]");
     if (!Array.isArray(parsed)) return [];
     const set = new Set<ScoreScope>();
     for (const v of parsed) {
-      if (typeof v === "string" && (SCORE_SCOPE_KEYS as readonly string[]).includes(v)) {
-        set.add(v as ScoreScope);
+      if (typeof v !== "string") continue;
+      if (v === "EXTRAS") {
+        for (const s of LEGACY_EXTRAS_COVERS) set.add(s);
+        continue;
       }
+      if ((SCORE_SCOPE_KEYS as readonly string[]).includes(v)) set.add(v as ScoreScope);
     }
     return SCORE_SCOPE_KEYS.filter((k) => set.has(k));
   } catch {
@@ -59,7 +96,7 @@ export function scopesAreFull(scopes: ScoreScope[] | null | undefined): boolean 
   return !scopes || scopes.length === 0;
 }
 
-/** Serialize a scope list back to the JSON column format. */
+/** Serialize a scope list back to the JSON column format (legacy keys expanded). */
 export function serializeScopes(scopes: ScoreScope[]): string {
   return JSON.stringify(parseScopes(JSON.stringify(scopes)));
 }
@@ -80,34 +117,59 @@ export function hasScope(
 /** Client-side alias of hasScope for components gating UI by scope. */
 export const hasScopeClient = hasScope;
 
+/**
+ * Which rubric score field is writable with which scopes. Most fields map to
+ * their single section; the combined "extras" field (certs + hackathons +
+ * memberships + SHL, max 15) requires ALL FOUR sections — a coordinator
+ * assigned just one of them verifies that section's documents but cannot
+ * rewrite the whole extras score.
+ */
+export const SCORE_FIELD_SCOPES: Record<string, ScoreScope[]> = {
+  academic: ["ACADEMIC"],
+  github: ["GITHUB"],
+  coding: ["CODING"],
+  projects: ["PROJECTS"],
+  internship: ["INTERNSHIP"],
+  extras: ["CERTIFICATIONS", "HACKATHONS", "MEMBERSHIP", "SHL"],
+};
+
+/** May this user write the given rubric score field? */
+export function canWriteScoreField(
+  user: { isSuperAdmin: boolean; permissionScopes?: ScoreScope[] | null } | null | undefined,
+  field: string
+): boolean {
+  const required = SCORE_FIELD_SCOPES[field];
+  if (!required) return false;
+  return required.every((s) => hasScope(user, s));
+}
+
 /* ------------------------------- Category map ------------------------------ */
 
 /**
  * Which scope each proof document category belongs to. Used to decide whether
- * a scoped coordinator may view/verify a specific document. Hackathons and
- * competitions are scored under EXTRAS.
+ * a scoped coordinator may view/verify a specific document.
  */
 export const DOC_CATEGORY_SCOPE: Record<string, ScoreScope> = {
   TENTH_MARKSHEET: "ACADEMIC",
   TWELFTH_MARKSHEET: "ACADEMIC",
   CGPA_MARKSHEET: "ACADEMIC",
   INTERNSHIP: "INTERNSHIP",
-  SKILL_CERT: "EXTRAS",
-  COMPETITION: "EXTRAS",
-  INHOUSE_PROJECT: "PROJECTS",
-  MEMBERSHIP: "EXTRAS",
-  SHL: "EXTRAS",
+  SKILL_CERT: "CERTIFICATIONS",
+  COMPETITION: "HACKATHONS",
+  INHOUSE_PROJECT: "INHOUSE",
+  MEMBERSHIP: "MEMBERSHIP",
+  SHL: "SHL",
 };
 
 /** Which scope each project-link category belongs to. */
 export const LINK_CATEGORY_SCOPE: Record<string, ScoreScope> = {
   PROJECT: "PROJECTS",
   FULLSTACK_PROJECT: "PROJECTS",
-  INHOUSE_PROJECT_LINK: "PROJECTS",
+  INHOUSE_PROJECT_LINK: "INHOUSE",
 };
 
 export function docCategoryScope(category: string): ScoreScope {
-  return DOC_CATEGORY_SCOPE[category] ?? "EXTRAS";
+  return DOC_CATEGORY_SCOPE[category] ?? "CERTIFICATIONS";
 }
 
 export function linkCategoryScope(category: string): ScoreScope {

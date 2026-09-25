@@ -80,10 +80,11 @@ export default async function MySubmissionPage() {
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold tracking-[-0.015em]">Proof documents</h2>
+          <h2 className="text-lg font-semibold tracking-[-0.015em]">Proof documents — one section per category</h2>
           <p className="text-sm text-muted-foreground">
-            Upload marksheets, internship letters, certificates, competition proofs, memberships and
-            SHL documents. Coordinators verify each file individually.
+            Marksheets, internships, skills &amp; global certifications, hackathons &amp;
+            competitions, in-house projects, professional memberships and SHL — each in its own
+            section, each verified by its assigned coordinator.
           </p>
         </div>
         <DocumentUploader locked={locked} />
@@ -91,7 +92,7 @@ export default async function MySubmissionPage() {
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold tracking-[-0.015em]">Project links</h2>
+          <h2 className="text-lg font-semibold tracking-[-0.015em]">Project &amp; in-house links</h2>
         </div>
         <LinkManager locked={locked} />
       </section>

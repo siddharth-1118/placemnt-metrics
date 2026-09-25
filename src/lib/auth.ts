@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
+  canWriteScoreField,
   docCategoryScope,
   hasScope,
   linkCategoryScope,
@@ -140,7 +141,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
  * Server-side scope helpers — an API may pass any SessionUser-shaped object.
  * Super admin and coordinators with an empty scope list pass every check.
  */
-export { hasScope, parseScopes, serializeScopes };
+export { canWriteScoreField, hasScope, parseScopes, serializeScopes };
 export type { ScoreScope };
 
 /**

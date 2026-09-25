@@ -9,17 +9,14 @@ import { GithubCard } from "@/components/dashboard/github-card";
 import { LeetcodeCard } from "@/components/dashboard/leetcode-card";
 import { VerificationPanel } from "@/components/dashboard/verification-panel";
 import { SCORE_CAPS, type ScoreBreakdown, type StudentDto } from "@/lib/types";
-import { hasScopeClient, type ScoreScope } from "@/lib/scopes";
+import {
+  canWriteScoreField,
+  docCategoryScope,
+  hasScopeClient,
+  linkCategoryScope,
+  type ScoreScope,
+} from "@/lib/scopes";
 import { fmtPct, fmtNumber, timeAgo } from "@/lib/utils";
-
-const SECTION_SCOPE_OF: Record<keyof ScoreBreakdown, ScoreScope> = {
-  academic: "ACADEMIC",
-  github: "GITHUB",
-  coding: "CODING",
-  projects: "PROJECTS",
-  internship: "INTERNSHIP",
-  extras: "EXTRAS",
-};
 
 const SCORE_FIELDS: { key: keyof ScoreBreakdown & string; label: string; cap: number; hint: string }[] = [
   { key: "academic", label: "Academic marks", cap: SCORE_CAPS.academic, hint: "Auto-filled from 10th/12th/CGPA" },
@@ -159,7 +156,14 @@ export function StudentDetailModal({
 
   /** Server strips out-of-scope evidence; hide its score fields client-side too. */
   const scoreFieldAllowed = (key: keyof ScoreBreakdown) =>
-    hasScopeClient({ isSuperAdmin: false, permissionScopes }, SECTION_SCOPE_OF[key]);
+    canWriteScoreField({ isSuperAdmin: false, permissionScopes }, key);
+
+  /** Is this specific document/link in one of my sections? */
+  const itemAllowed = (category: string, kind: "doc" | "link") =>
+    hasScopeClient(
+      { isSuperAdmin: false, permissionScopes },
+      kind === "doc" ? docCategoryScope(category) : linkCategoryScope(category)
+    );
   const rows = useMemo(
     () =>
       student
@@ -449,8 +453,8 @@ export function StudentDetailModal({
               {(student.documents.length > 0 || student.projectLinks.length > 0) && (
                 <section className="rounded-xl border p-4">
                   <VerificationPanel
-                    documents={student.documents}
-                    links={student.projectLinks}
+                    documents={student.documents.filter((d) => itemAllowed(d.category, "doc"))}
+                    links={student.projectLinks.filter((l) => itemAllowed(l.category, "link"))}
                     canScore={canScore}
                     onChanged={async () => {
                       const res = await fetch(`/api/students/${studentId}`, { cache: "no-store" });

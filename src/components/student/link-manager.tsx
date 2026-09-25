@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, Loader2, Lock, Plus, Trash2 } from "lucide-react";
+import { Boxes, ExternalLink, Loader2, Lock, Plus, Trash2 } from "lucide-react";
 import { Badge, Button, Card, CardContent, Input, Label } from "@/components/ui";
-import { LINK_CATEGORIES, linkCategoryLabel } from "@/lib/categories";
+import { LINK_CATEGORIES } from "@/lib/categories";
 import type { ProjectLinkDto } from "@/lib/types";
 
 function statusBadge(status: ProjectLinkDto["status"]) {
@@ -12,9 +12,17 @@ function statusBadge(status: ProjectLinkDto["status"]) {
   return <Badge variant="warning">Pending review</Badge>;
 }
 
+/** Visual identity per link section. */
+const LINK_SECTION_STYLE: Record<string, string> = {
+  PROJECT: "border-primary/25",
+  FULLSTACK_PROJECT: "border-emerald-500/25",
+  INHOUSE_PROJECT_LINK: "border-cyan-500/25",
+};
+
 /**
- * Add-as-many-as-you-want project links on the signed-in user's own
- * submission. Organized by the three link categories.
+ * Project & portfolio links on the signed-in user's own submission, grouped
+ * into their own clearly separated sections: project links, full-stack
+ * project links, and in-house project links.
  */
 export function LinkManager({ onChanged, locked = false }: { onChanged?: () => void; locked?: boolean }) {
   const [links, setLinks] = useState<ProjectLinkDto[]>([]);
@@ -86,64 +94,60 @@ export function LinkManager({ onChanged, locked = false }: { onChanged?: () => v
   }
 
   return (
-    <Card>
-      <CardContent className="space-y-4 pt-5">
-        <div>
-          <Label className="text-sm">Project & portfolio links</Label>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Projects and full-stack projects must be links — add as many as you want. In-house
-            projects can use a deployed link instead of a document.
-          </p>
-        </div>
+    <div className="grid gap-4 lg:grid-cols-3">
+      {LINK_CATEGORIES.map((cat) => {
+        const mine = links.filter((l) => l.category === cat.key);
+        return (
+          <Card key={cat.key} className={LINK_SECTION_STYLE[cat.key] ?? ""}>
+            <CardContent className="space-y-3 pt-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Boxes className="h-4 w-4 shrink-0 text-primary" />
+                  <Label className="text-sm">{cat.label}</Label>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{cat.hint}</p>
+              </div>
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
+              {locked ? (
+                <p className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600">
+                  <Lock className="h-3.5 w-3.5" /> Adding links is closed by coordinator
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <Input placeholder="Label (e.g. E-commerce app)" value={cat.key === category ? label : ""} onFocus={() => setCategory(cat.key)} onChange={(e) => setLabel(e.target.value)} />
+                  <div className="flex gap-2">
+                    <Input placeholder="https://…" value={cat.key === category ? url : ""} onFocus={() => setCategory(cat.key)} onChange={(e) => setUrl(e.target.value)} />
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { setCategory(cat.key); add(); }}>
+                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
+                    </Button>
+                  </div>
+                </div>
+              )}
 
-        {locked ? (
-          <p className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600">
-            <Lock className="h-3.5 w-3.5" /> Adding links is closed by coordinator
-          </p>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,2fr)_auto]">
-            <select
-              className="h-9 rounded-lg border bg-card px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              aria-label="Link category"
-            >
-              {LINK_CATEGORIES.map((c) => (
-                <option key={c.key} value={c.key}>{c.label}</option>
-              ))}
-            </select>
-            <Input placeholder="Label (e.g. E-commerce app)" value={label} onChange={(e) => setLabel(e.target.value)} />
-            <Input placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} />
-            <Button type="button" onClick={add} disabled={busy}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
-            </Button>
-          </div>
-        )}
-
-        {links.length > 0 && (
-          <ul className="space-y-1.5">
-            {links.map((l) => (
-              <li key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                <ExternalLink className="h-4 w-4 shrink-0 text-primary" />
-                <span className="font-medium">{l.label}</span>
-                <a href={l.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 break-all text-xs text-primary hover:underline">
-                  {l.url}
-                </a>
-                <span className="shrink-0 text-xs text-muted-foreground">{linkCategoryLabel(l.category)}</span>
-                {statusBadge(l.status)}
-                {l.status !== "VERIFIED" && (
-                  <Button variant="ghost" size="icon" className="h-6 w-6" aria-label="Remove" onClick={() => remove(l.id)}>
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+              {mine.length > 0 && (
+                <ul className="space-y-1.5">
+                  {mine.map((l) => (
+                    <li key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm">
+                      <ExternalLink className="h-4 w-4 shrink-0 text-primary" />
+                      <span className="font-medium">{l.label}</span>
+                      <a href={l.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 break-all text-xs text-primary hover:underline">
+                        {l.url}
+                      </a>
+                      {statusBadge(l.status)}
+                      {l.status !== "VERIFIED" && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6" aria-label="Remove" onClick={() => remove(l.id)}>
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
   );
 }
 
@@ -161,7 +165,7 @@ export function LinkList({ links }: { links: ProjectLinkDto[] }) {
           <a href={l.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 break-all text-xs text-primary hover:underline">
             {l.url}
           </a>
-          <span className="shrink-0 text-xs text-muted-foreground">{linkCategoryLabel(l.category)}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{l.category}</span>
           {statusBadge(l.status)}
         </li>
       ))}

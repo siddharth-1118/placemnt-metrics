@@ -1,9 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileText, Loader2, Lock, Trash2, Upload } from "lucide-react";
+import {
+  Award, FileText, Globe, Loader2, Lock, Server, ShieldCheck, Trash2, Upload, Users,
+} from "lucide-react";
 import { Badge, Button, Card, CardContent, Input, Label } from "@/components/ui";
-import { DOC_CATEGORIES, UPLOAD_MAX_BYTES, docCategoryLabel } from "@/lib/categories";
+import { DOC_CATEGORIES, UPLOAD_MAX_BYTES } from "@/lib/categories";
 import type { DocumentDto } from "@/lib/types";
 
 function fmtSize(bytes: number): string {
@@ -18,10 +20,49 @@ function statusBadge(status: DocumentDto["status"]) {
   return <Badge variant="warning">Pending review</Badge>;
 }
 
+/** Visual identity per section (icon + accent hue), so each upload area is distinct. */
+const SECTION_STYLE: Record<
+  string,
+  { icon: React.ComponentType<{ className?: string }>; ring: string }
+> = {
+  TENTH_MARKSHEET: { icon: Award, ring: "border-sky-500/25" },
+  TWELFTH_MARKSHEET: { icon: Award, ring: "border-sky-500/25" },
+  CGPA_MARKSHEET: { icon: Award, ring: "border-sky-500/25" },
+  INTERNSHIP: { icon: BriefcaseIcon, ring: "border-violet-500/25" },
+  SKILL_CERT: { icon: Globe, ring: "border-emerald-500/25" },
+  COMPETITION: { icon: TrophyIcon, ring: "border-amber-500/25" },
+  INHOUSE_PROJECT: { icon: Server, ring: "border-cyan-500/25" },
+  MEMBERSHIP: { icon: Users, ring: "border-fuchsia-500/25" },
+  SHL: { icon: ShieldCheck, ring: "border-rose-500/25" },
+};
+
+function BriefcaseIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="2" y="7" width="20" height="14" rx="2" />
+      <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+    </svg>
+  );
+}
+
+function TrophyIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M6 9a6 6 0 0 0 12 0V3H6z" />
+      <path d="M6 5H3a2 2 0 0 0 2 4h1" />
+      <path d="M18 5h3a2 2 0 0 1-2 4h-1" />
+      <path d="M12 15v3" />
+      <path d="M8 21h8" />
+      <path d="M12 18a2 2 0 0 1-2 2h0a2 2 0 0 0-2 2" />
+    </svg>
+  );
+}
+
 /**
  * Document upload + management for the signed-in user's own submission.
- * One upload block per category; uploaded files are listed with their
- * verification status and can be removed while still unverified.
+ * Each category is its own visually distinct section with its own upload
+ * block; uploaded files are listed with verification status and can be
+ * removed while still unverified.
  */
 export function DocumentUploader({ onChanged, locked = false }: { onChanged?: () => void; locked?: boolean }) {
   const [docs, setDocs] = useState<DocumentDto[]>([]);
@@ -47,7 +88,6 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
 
   if (!loaded) {
     load().then(() => setLoaded(true));
-    // Render nothing meaningful until the first fetch resolves.
     if (!loaded) return <Card><CardContent className="pt-5 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Loading your documents…</CardContent></Card>;
   }
 
@@ -114,12 +154,19 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
       <div className="grid gap-4 lg:grid-cols-2">
         {DOC_CATEGORIES.map((cat) => {
           const mine = byCategory.get(cat.key) ?? [];
+          const style = SECTION_STYLE[cat.key] ?? { icon: FileText, ring: "border-border" };
+          const Icon = style.icon;
           return (
-            <Card key={cat.key}>
+            <Card key={cat.key} className={style.ring}>
               <CardContent className="space-y-3 pt-5">
-                <div>
-                  <Label className="text-sm">{cat.label}</Label>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{cat.hint}</p>
+                <div className="flex items-start gap-2.5">
+                  <span className="glass-inset flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+                    <Icon className="h-4.5 w-4.5 text-primary" />
+                  </span>
+                  <div className="min-w-0">
+                    <Label className="text-sm">{cat.label}</Label>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{cat.hint}</p>
+                  </div>
                 </div>
 
                 {mine.length > 0 && (
@@ -180,8 +227,7 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
 
       <p className="text-xs text-muted-foreground">
         PDF, JPG, PNG or WEBP · up to 10 MB per file. Coordinators verify each document; you can
-        remove files until they are verified. {docCategoryLabel("SHL")} uploads are mandatory for
-        SHL participants only.
+        remove files until they are verified.
       </p>
     </div>
   );
@@ -206,7 +252,7 @@ export function DocumentList({
           <a href={d.fileUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline" title={d.fileName}>
             {d.note || d.fileName}
           </a>
-          <span className="shrink-0 text-xs text-muted-foreground">{docCategoryLabel(d.category)}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{d.category}</span>
           <span className="shrink-0 text-[11px] text-muted-foreground">{fmtSize(d.sizeBytes)}</span>
           {showStatus && statusBadge(d.status)}
         </li>
