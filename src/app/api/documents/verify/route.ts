@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireScorer } from "@/lib/auth";
+import { requireScorer, hasScope } from "@/lib/auth";
+import { docCategoryScope, linkCategoryScope } from "@/lib/scopes";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ const verifySchema = z.object({
  * VERIFIED / REJECTED (with an optional note). PENDING resets the review.
  */
 export async function PATCH(req: Request) {
-  const { error } = await requireScorer();
+  const { user, error } = await requireScorer();
   if (error) return error;
 
   let body: unknown;
@@ -32,6 +33,21 @@ export async function PATCH(req: Request) {
   }
 
   const { kind, id, status, reviewNote } = parsed.data;
+
+  // Scoped coordinators may only verify items in their assigned sections
+  // (e.g. a hackathons-only reviewer verifies COMPETITION documents, not
+  // marksheets). Super admin / unrestricted coordinators pass every check.
+  const targetScope =
+    kind === "document"
+      ? docCategoryScope((await prisma.document.findUnique({ where: { id } }))?.category ?? "")
+      : linkCategoryScope((await prisma.projectLink.findUnique({ where: { id } }))?.category ?? "");
+  if (!hasScope(user, targetScope)) {
+    return NextResponse.json(
+      { error: "You do not have permission to review this section" },
+      { status: 403 }
+    );
+  }
+
   const now = new Date();
   const data = {
     status,

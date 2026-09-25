@@ -5,6 +5,7 @@ import {
   verifyPassword, setSessionCookie, getSessionUser, clearSessionCookie,
 } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
+import { parseScopes } from "@/lib/scopes";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
         evaluatorAssigned: s.isSuperAdmin || (s.role === "COORDINATOR" && (s.canViewSubmissions || s.canScore)),
         canViewSubmissions: s.isSuperAdmin || (s.role === "COORDINATOR" && (s.canViewSubmissions || s.canScore)),
         canScore: s.isSuperAdmin || (s.role === "COORDINATOR" && s.canScore),
+        permissionScopes: parseScopes(s.permissionScopes),
       },
       passwordClaimed: true,
     });
@@ -74,6 +76,7 @@ export async function POST(req: Request) {
       evaluatorAssigned: s.isSuperAdmin || (s.role === "COORDINATOR" && (s.canViewSubmissions || s.canScore)),
       canViewSubmissions: s.isSuperAdmin || (s.role === "COORDINATOR" && (s.canViewSubmissions || s.canScore)),
       canScore: s.isSuperAdmin || (s.role === "COORDINATOR" && s.canScore),
+      permissionScopes: parseScopes(s.permissionScopes),
     },
   });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, hashPassword } from "@/lib/auth";
+import { parseScopes, serializeScopes, SCORE_SCOPE_KEYS } from "@/lib/scopes";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,11 @@ export const dynamic = "force-dynamic";
  * Students (role !== COORDINATOR) are never listed or mutated here.
  */
 
+const scopesSchema = z
+  .array(z.enum(SCORE_SCOPE_KEYS))
+  .max(SCORE_SCOPE_KEYS.length)
+  .optional();
+
 const createSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email").max(120),
   fullName: z.string().trim().min(3, "Enter the coordinator's full name").max(80),
@@ -28,12 +34,19 @@ const createSchema = z.object({
     .regex(/^[A-Za-z0-9-]+$/, "Only letters, digits and hyphens")
     .transform((v) => v.toUpperCase()),
   password: z.string().min(8, "Initial password must be at least 8 characters").max(100),
+  // Which rubric sections this coordinator can view & score. Omitted/empty = ALL.
+  permissionScopes: scopesSchema,
+  // Explicitly grant scoring even with no section restrictions (full scorer).
+  canScore: z.boolean().optional(),
 });
 
 const updateSchema = z.object({
   id: z.string().min(1),
   canViewSubmissions: z.boolean().optional(),
   canScore: z.boolean().optional(),
+  // Empty array = unrestricted. A coordinator with at least one scope gets
+  // canScore=true automatically (scoped coordinators score their sections).
+  permissionScopes: scopesSchema,
 });
 
 const deleteSchema = z.object({ id: z.string().min(1) });
@@ -57,6 +70,7 @@ function coordinatorDto(s: {
   isSuperAdmin: boolean;
   canViewSubmissions: boolean;
   canScore: boolean;
+  permissionScopes: string;
   passwordHash: string | null;
   claimablePassword: boolean;
   createdAt: Date;
@@ -69,6 +83,7 @@ function coordinatorDto(s: {
     isSuperAdmin: s.isSuperAdmin,
     canViewSubmissions: s.canViewSubmissions || s.canScore,
     canScore: s.canScore,
+    permissionScopes: parseScopes(s.permissionScopes),
     hasPassword: !!s.passwordHash,
     awaitingClaim: s.claimablePassword,
     createdAt: s.createdAt.toISOString(),
@@ -117,6 +132,7 @@ export async function POST(req: Request) {
     );
   }
 
+  const scopes = parsed.data.permissionScopes ?? [];
   const created = await prisma.student.create({
     data: {
       email,
@@ -130,7 +146,11 @@ export async function POST(req: Request) {
       role: "COORDINATOR",
       evaluatorAssigned: true,
       canViewSubmissions: true,
-      canScore: false,
+      // Scoped coordinators may score their assigned sections; with no scopes
+      // the coordinator is view-only unless canScore was explicitly requested
+      // (full scorer).
+      canScore: parsed.data.canScore ?? scopes.length > 0,
+      permissionScopes: serializeScopes(scopes),
       passwordHash: hashPassword(password),
     },
   });
@@ -165,8 +185,17 @@ export async function PATCH(req: Request) {
     );
   }
 
-  // canScore implies canViewSubmissions.
-  const canScore = parsed.data.canScore ?? target.canScore;
+  // canScore implies canViewSubmissions. Updating scopes also flips canScore
+  // on when the coordinator gains at least one section (a scoped coordinator
+  // needs canScore to reach the verify/score APIs), and off when the list is
+  // emptied only if the request explicitly turned scoring off — an empty
+  // array alone means "full access", never "no access".
+  const nextScopes =
+    parsed.data.permissionScopes !== undefined
+      ? serializeScopes(parsed.data.permissionScopes)
+      : target.permissionScopes;
+  const scopeCount = parseScopes(nextScopes).length;
+  const canScore = parsed.data.canScore ?? (scopeCount > 0 ? true : target.canScore);
   const canViewSubmissions = parsed.data.canViewSubmissions ?? (target.canViewSubmissions || canScore);
 
   const updated = await prisma.student.update({
@@ -175,6 +204,7 @@ export async function PATCH(req: Request) {
       canScore,
       canViewSubmissions: canViewSubmissions || canScore,
       evaluatorAssigned: canViewSubmissions || canScore,
+      permissionScopes: nextScopes,
     },
   });
 

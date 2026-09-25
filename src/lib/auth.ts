@@ -2,6 +2,15 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import {
+  docCategoryScope,
+  hasScope,
+  linkCategoryScope,
+  parseScopes,
+  scopesAreFull,
+  serializeScopes,
+  type ScoreScope,
+} from "@/lib/scopes";
 
 export { hashPassword, verifyPassword };
 
@@ -79,6 +88,8 @@ export interface SessionUser {
   canViewSubmissions: boolean;
   /** May score and verify documents & links (implies canViewSubmissions). */
   canScore: boolean;
+  /** Score-section scopes: empty = ALL sections. See src/lib/scopes.ts. */
+  permissionScopes: ScoreScope[];
   fullName: string;
   registerNumber: string;
   email: string;
@@ -99,6 +110,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       evaluatorAssigned: true,
       canViewSubmissions: true,
       canScore: true,
+      permissionScopes: true,
       fullName: true,
       registerNumber: true,
       email: true,
@@ -117,10 +129,48 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     evaluatorAssigned: canViewSubmissions,
     canViewSubmissions,
     canScore,
+    permissionScopes: parseScopes(s.permissionScopes),
     fullName: s.fullName,
     registerNumber: s.registerNumber,
     email: s.email,
   };
+}
+
+/**
+ * Server-side scope helpers — an API may pass any SessionUser-shaped object.
+ * Super admin and coordinators with an empty scope list pass every check.
+ */
+export { hasScope, parseScopes, serializeScopes };
+export type { ScoreScope };
+
+/**
+ * View a StudentDto-like object through the viewer's permission scopes:
+ * documents/links outside the viewer's scopes are stripped server-side, so a
+ * scoped coordinator never even receives the hidden evidence. Unrestricted
+ * viewers (super admin, or an empty scope list) get everything unchanged.
+ */
+export function filterStudentDtoForUser<
+  TStudent extends {
+    documents?: { category: string }[];
+    projectLinks?: { category: string }[];
+  },
+>(
+  student: TStudent,
+  user: { isSuperAdmin: boolean; permissionScopes?: ScoreScope[] | null }
+): TStudent {
+  if (user.isSuperAdmin) return student;
+  const scopes = user.permissionScopes ?? [];
+  if (scopesAreFull(scopes)) return student; // unrestricted — return as-is
+
+  return {
+    ...student,
+    documents: (student.documents ?? []).filter((d) =>
+      hasScope(user, docCategoryScope(d.category))
+    ),
+    projectLinks: (student.projectLinks ?? []).filter((l) =>
+      hasScope(user, linkCategoryScope(l.category))
+    ),
+  } as TStudent;
 }
 
 /** Guard for all evaluator APIs — view level. */

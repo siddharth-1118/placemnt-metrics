@@ -7,6 +7,7 @@ import {
 import { Badge, Button, Card, CardContent, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
 import { fmtPct, timeAgo } from "@/lib/utils";
+import type { ScoreScope } from "@/lib/scopes";
 import type { StudentDto } from "@/lib/types";
 
 type SortKey = "rank" | "totalScore" | "cgpa" | "name" | "registerNumber";
@@ -67,7 +68,14 @@ function SummaryCell({ s, platform }: { s: StudentDto; platform: "GITHUB" | "LEE
   );
 }
 
-export function Dashboard({ canScore = true }: { canScore?: boolean }) {
+export function Dashboard({
+  canScore = true,
+  permissionScopes = [],
+}: {
+  canScore?: boolean;
+  /** Rubric sections this coordinator may view & score; empty = all. */
+  permissionScopes?: ScoreScope[];
+}) {
   const [students, setStudents] = useState<StudentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -448,6 +456,7 @@ export function Dashboard({ canScore = true }: { canScore?: boolean }) {
         <StudentDetailModal
           studentId={selectedId}
           canScore={canScore}
+          permissionScopes={permissionScopes}
           onClose={() => setSelectedId(null)}
           onChanged={load}
         />

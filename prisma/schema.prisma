@@ -57,6 +57,13 @@ model Student {
   /// Coordinators: may enter/adjust scores and verify documents & links
   /// (implies canViewSubmissions).
   canScore          Boolean  @default(false)
+  /// Coordinators: JSON array of score-section scopes this coordinator may
+  /// view AND score. Keys come from SCORE_SCOPE_KEYS in src/lib/scopes.ts:
+  ///   ACADEMIC | GITHUB | CODING | PROJECTS | INTERNSHIP | EXTRAS
+  /// Empty array = ALL sections (full access). Hackathons/competitions and
+  /// certifications are scored under EXTRAS. Only the super admin can change
+  /// this, via the coordinator management panel or /api/admin/coordinators.
+  permissionScopes  String   @default("[]")
   /// scrypt hash (salt:hash, hex). Students may optionally set one to view
   /// their own submission; coordinators must have one. NULL after a password
   /// reset approval — the next sign-in with email + any password claims it.

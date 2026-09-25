@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { clampScores, assignRanks } from "@/lib/score";
 import { toDto } from "@/lib/dto";
-import { requireScorer, getSessionUser } from "@/lib/auth";
+import { requireScorer, getSessionUser, hasScope } from "@/lib/auth";
 import { SCORE_CAPS } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const { error } = await requireScorer();
+  const { user, error } = await requireScorer();
   if (error) return error;
 
   const student = await prisma.student.findUnique({ where: { id: params.id } });
@@ -52,6 +52,26 @@ export async function PATCH(
   }
 
   const incoming = parsed.data.scores ?? {};
+
+  // Scoped coordinators may only write their assigned rubric sections.
+  // Super admins and coordinators with no scope restrictions pass every check.
+  const SCORE_SCOPE_OF = {
+    academic: "ACADEMIC",
+    github: "GITHUB",
+    coding: "CODING",
+    projects: "PROJECTS",
+    internship: "INTERNSHIP",
+    extras: "EXTRAS",
+  } as const;
+  for (const key of Object.keys(incoming) as (keyof typeof incoming & keyof typeof SCORE_SCOPE_OF)[]) {
+    const scope = SCORE_SCOPE_OF[key];
+    if (scope && !hasScope(user, scope)) {
+      return NextResponse.json(
+        { error: "You do not have permission to score this section" },
+        { status: 403 }
+      );
+    }
+  }
   // Merge with existing scores so partial updates are supported.
   const merged = {
     academic: incoming.academic ?? student.scoreAcademic,

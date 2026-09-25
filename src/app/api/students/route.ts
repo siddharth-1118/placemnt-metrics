@@ -5,7 +5,12 @@ import { enqueueScrapes } from "@/lib/pipeline";
 import { clampScores, suggestAcademicScore } from "@/lib/score";
 import { parseGithubLogin, parseLeetcodeUser } from "@/lib/utils";
 import { toDto } from "@/lib/dto";
-import { requireEvaluator, hashPassword, getSessionUser } from "@/lib/auth";
+import {
+  requireEvaluator,
+  hashPassword,
+  getSessionUser,
+  filterStudentDtoForUser,
+} from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
 import type { StudentDto } from "@/lib/types";
 
@@ -49,7 +54,7 @@ const submitSchema = z.object({
 
 /** GET /api/students — evaluator-only leaderboard (ranked, all students) */
 export async function GET() {
-  const { error } = await requireEvaluator();
+  const { user, error } = await requireEvaluator();
   if (error) return error;
 
   // Coordinators are hidden from the batch leaderboard EXCEPT when they have
@@ -62,7 +67,9 @@ export async function GET() {
     orderBy: [{ totalScore: "desc" }, { registerNumber: "asc" }],
     include: { scrapes: true, documents: true, projectLinks: true },
   });
-  return NextResponse.json({ students: students.map((s) => toDto(s)) });
+  // Scoped coordinators receive only the evidence inside their sections;
+  // super admin and unrestricted coordinators get everything.
+  return NextResponse.json({ students: students.map((s) => filterStudentDtoForUser(toDto(s), user)) });
 }
 
 /** POST /api/students — student submission; creates or updates, then triggers scrapes */

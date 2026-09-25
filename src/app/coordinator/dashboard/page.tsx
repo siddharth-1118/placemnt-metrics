@@ -36,7 +36,7 @@ export default async function CoordinatorDashboardPage() {
           <CoordinatorsAdmin />
         </div>
       )}
-      <Dashboard canScore={user.canScore} />
+      <Dashboard canScore={user.canScore} permissionScopes={user.permissionScopes} />
       <div className="mt-8">
         <ResetRequestsPanel canManage={user.canScore} />
       </div>

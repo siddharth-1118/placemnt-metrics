@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS "Student" (
     "isSuperAdmin" BOOLEAN NOT NULL DEFAULT false,
     "canViewSubmissions" BOOLEAN NOT NULL DEFAULT false,
     "canScore" BOOLEAN NOT NULL DEFAULT false,
+    "permissionScopes" TEXT NOT NULL DEFAULT '[]',
     "passwordHash" TEXT,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
     "coordinatorNote" TEXT,
@@ -151,6 +152,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "isSuperAdmin"       BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "canViewSubmissions" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "canScore"           BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "permissionScopes"   TEXT NOT NULL DEFAULT '[]';
 
 -- =====================================================================
 -- Seed coordinator accounts (scrypt salt:hash, app-compatible format)

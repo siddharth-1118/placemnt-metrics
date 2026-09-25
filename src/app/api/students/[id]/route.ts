@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { toDto } from "@/lib/dto";
-import { getSessionUser, requireEvaluator } from "@/lib/auth";
+import { getSessionUser, requireEvaluator, filterStudentDtoForUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +32,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!student) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
-  return NextResponse.json({ student: toDto(student) });
+  // Students viewing their own submission are unrestricted; scoped
+  // coordinators see only the evidence inside their assigned sections.
+  const dto = toDto(student);
+  return NextResponse.json({
+    student: isSelf ? dto : filterStudentDtoForUser(dto, user),
+  });
 }
 
 /**

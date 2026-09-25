@@ -1,33 +1,46 @@
 -- =====================================================================
--- Additions (v3) — run this ONCE in the Supabase SQL editor if your
--- database was already set up and you only want the new super-admin /
--- coordinator-permission columns (skip if you run `npm run db:use`,
--- which pushes the whole schema and seeds automatically).
+-- ADDITIONS (v3) — paste this WHOLE file into Supabase → SQL Editor → Run.
 --
--- Adds:
---   Student.isSuperAdmin        — full access + coordinator management
---   Student.canViewSubmissions  — may open leaderboard & inspect
---   Student.canScore            — may score & verify (implies view)
+-- REQUIRED before/with the current app deploy. Adds the super-admin /
+-- per-coordinator permission columns AND the per-coordinator section
+-- scopes, then promotes sv3824@srmist.edu.in to super admin.
 --
--- Then promotes sv3824@srmist.edu.in to super admin with all access.
--- Safe to re-run; touches nothing else.
+-- Fixes the "Could not change the setting (HTTP 500)" error: that 500
+-- happens because the app queries "isSuperAdmin" on every login/API call
+-- while the deployed database is still missing the column.
+--
+-- Safe to re-run; touches nothing else and never touches passwords.
 -- =====================================================================
 
+-- 1. Permission columns (super admin + view/score flags)
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "isSuperAdmin"       BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "canViewSubmissions" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "canScore"           BOOLEAN NOT NULL DEFAULT false;
 
--- Promote the super admin (idempotent — also fixes role/evaluator flags
--- on an existing account without touching its password).
+-- 2. Per-coordinator section scopes (JSON array of strings).
+--    Values: ACADEMIC | GITHUB | CODING | PROJECTS | INTERNSHIP | EXTRAS
+--    Empty array = ALL sections (full access). Hackathons & competitions
+--    are scored under EXTRAS. Managed from the super admin's
+--    "Coordinator management" panel.
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "permissionScopes" TEXT NOT NULL DEFAULT '[]';
+
+-- 3. Promote the super admin (idempotent).
 UPDATE "Student"
 SET "role"               = 'COORDINATOR',
     "isSuperAdmin"       = true,
     "canViewSubmissions" = true,
-    "canScore"           = true,
-    "evaluatorAssigned"  = true
+    "canScore"           = true
 WHERE "email" = 'sv3824@srmist.edu.in';
 
--- Self-check: should return exactly 1 row with all true.
-SELECT "email", "role", "isSuperAdmin", "canViewSubmissions", "canScore"
+-- 4. Self-checks.
+-- A) Columns exist?  → must list 4 rows (the new columns).
+SELECT column_name, data_type, column_default
+FROM information_schema.columns
+WHERE table_name = 'Student'
+  AND column_name IN ('isSuperAdmin', 'canViewSubmissions', 'canScore', 'permissionScopes')
+ORDER BY column_name;
+
+-- B) Super admin promoted? → exactly 1 row, isSuperAdmin = true.
+SELECT "email", "role", "isSuperAdmin", "canViewSubmissions", "canScore", "permissionScopes"
 FROM "Student"
 WHERE "email" = 'sv3824@srmist.edu.in';

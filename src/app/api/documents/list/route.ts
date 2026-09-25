@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser, requireEvaluator } from "@/lib/auth";
+import { getSessionUser, filterStudentDtoForUser } from "@/lib/auth";
 import { docToDto, linkToDto } from "@/lib/dto";
 
 export const dynamic = "force-dynamic";
@@ -28,10 +28,13 @@ export async function GET(req: Request) {
     prisma.projectLink.findMany({ where: { studentId }, orderBy: { createdAt: "asc" } }),
   ]);
 
-  return NextResponse.json({
-    documents: documents.map(docToDto),
-    projectLinks: projectLinks.map(linkToDto),
-  });
+  // Reuse the scope filter through a minimal shape so scoped coordinators
+  // only see the documents/links inside their assigned sections.
+  const filtered = filterStudentDtoForUser(
+    { documents: documents.map(docToDto), projectLinks: projectLinks.map(linkToDto) },
+    user
+  );
+  return NextResponse.json(filtered);
 }
 
 /**

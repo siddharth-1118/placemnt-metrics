@@ -9,7 +9,17 @@ import { GithubCard } from "@/components/dashboard/github-card";
 import { LeetcodeCard } from "@/components/dashboard/leetcode-card";
 import { VerificationPanel } from "@/components/dashboard/verification-panel";
 import { SCORE_CAPS, type ScoreBreakdown, type StudentDto } from "@/lib/types";
+import { hasScopeClient, type ScoreScope } from "@/lib/scopes";
 import { fmtPct, fmtNumber, timeAgo } from "@/lib/utils";
+
+const SECTION_SCOPE_OF: Record<keyof ScoreBreakdown, ScoreScope> = {
+  academic: "ACADEMIC",
+  github: "GITHUB",
+  coding: "CODING",
+  projects: "PROJECTS",
+  internship: "INTERNSHIP",
+  extras: "EXTRAS",
+};
 
 const SCORE_FIELDS: { key: keyof ScoreBreakdown & string; label: string; cap: number; hint: string }[] = [
   { key: "academic", label: "Academic marks", cap: SCORE_CAPS.academic, hint: "Auto-filled from 10th/12th/CGPA" },
@@ -20,14 +30,14 @@ const SCORE_FIELDS: { key: keyof ScoreBreakdown & string; label: string; cap: nu
   { key: "extras", label: "Extras & certifications", cap: SCORE_CAPS.extras, hint: "Certs, competitions, memberships, SHL — after document verification" },
 ];
 
-function diffRows(s: StudentDto) {
+function diffRows(s: StudentDto, show: { github: boolean; coding: boolean }) {
   const gh = s.scrapes.find((x) => x.platform === "GITHUB");
   const lc = s.scrapes.find((x) => x.platform === "LEETCODE");
   const ghData = gh?.data && "publicRepos" in gh.data ? gh.data : null;
   const lcData = lc?.data && "solvedTotal" in lc.data ? lc.data : null;
   const rows: { label: string; submitted: string; scraped: string; match: boolean | null }[] = [];
 
-  if (s.githubUrl) {
+  if (s.githubUrl && show.github) {
     const submittedLogin = (s.githubUrl.match(/github\.com\/([^/]+)/i)?.[1] ?? "").replace(/\/$/, "");
     rows.push({
       label: "GitHub username",
@@ -54,7 +64,7 @@ function diffRows(s: StudentDto) {
       match: null,
     });
   }
-  if (s.leetcodeUrl) {
+  if (s.leetcodeUrl && show.coding) {
     const submittedUser = (s.leetcodeUrl.match(/leetcode\.com\/(?:u\/)?([^/?#]+)/i)?.[1] ?? "");
     rows.push({
       label: "LeetCode username",
@@ -87,11 +97,14 @@ function diffRows(s: StudentDto) {
 export function StudentDetailModal({
   studentId,
   canScore = true,
+  permissionScopes = [],
   onClose,
   onChanged,
 }: {
   studentId: string;
   canScore?: boolean;
+  /** Sections this coordinator may view & score; empty = all. */
+  permissionScopes?: ScoreScope[];
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -143,7 +156,20 @@ export function StudentDetailModal({
       ),
     [scores]
   );
-  const rows = useMemo(() => (student ? diffRows(student) : []), [student]);
+
+  /** Server strips out-of-scope evidence; hide its score fields client-side too. */
+  const scoreFieldAllowed = (key: keyof ScoreBreakdown) =>
+    hasScopeClient({ isSuperAdmin: false, permissionScopes }, SECTION_SCOPE_OF[key]);
+  const rows = useMemo(
+    () =>
+      student
+        ? diffRows(student, {
+            github: scoreFieldAllowed("github"),
+            coding: scoreFieldAllowed("coding"),
+          })
+        : [],
+    [student, permissionScopes]
+  );
 
   // Poll while any scrape job is still running/pending.
   const pendingScrapes = student?.scrapes.some((s) => s.status === "RUNNING" || s.status === "PENDING") ?? false;
@@ -172,14 +198,18 @@ export function StudentDetailModal({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scores: {
-            academic: Number(scores.academic),
-            github: Number(scores.github),
-            coding: Number(scores.coding),
-            projects: Number(scores.projects),
-            internship: Number(scores.internship),
-            extras: Number(scores.extras),
-          },
+          // Send only the sections this coordinator may score — the server
+          // rejects out-of-scope writes, so restricted fields stay untouched.
+          scores: Object.fromEntries(
+            Object.entries({
+              academic: Number(scores.academic),
+              github: Number(scores.github),
+              coding: Number(scores.coding),
+              projects: Number(scores.projects),
+              internship: Number(scores.internship),
+              extras: Number(scores.extras),
+            }).filter(([k]) => scoreFieldAllowed(k as keyof ScoreBreakdown))
+          ),
           coordinatorNote: note || undefined,
           ...(verify === undefined ? {} : { verify }),
         }),
@@ -350,38 +380,42 @@ export function StudentDetailModal({
                   const lc = student.scrapes.find((s) => s.platform === "LEETCODE");
                   const ghData = gh?.data && "publicRepos" in gh.data ? gh.data : null;
                   const lcData = lc?.data && "solvedTotal" in lc.data ? lc.data : null;
+                  const canSeeGithub = scoreFieldAllowed("github");
+                  const canSeeCoding = scoreFieldAllowed("coding");
                   return (
                     <>
-                      {ghData ? (
-                        <GithubCard data={ghData} />
-                      ) : (
-                        <Card>
-                          <CardContent className="pt-5">
-                            <p className="text-sm text-muted-foreground">
-                              {gh?.status === "RUNNING" || gh?.status === "PENDING"
-                                ? "GitHub scrape in progress…"
-                                : student.githubUrl
-                                  ? `GitHub scrape failed: ${gh?.error ?? "unknown error"}`
-                                  : "No GitHub profile provided."}
-                            </p>
-                          </CardContent>
-                        </Card>
-                      )}
-                      {lcData ? (
-                        <LeetcodeCard data={lcData} />
-                      ) : (
-                        <Card>
-                          <CardContent className="pt-5">
-                            <p className="text-sm text-muted-foreground">
-                              {lc?.status === "RUNNING" || lc?.status === "PENDING"
-                                ? "LeetCode scrape in progress…"
-                                : student.leetcodeUrl
-                                  ? `LeetCode scrape failed: ${lc?.error ?? "unknown error"}`
-                                  : "No LeetCode profile provided."}
-                            </p>
-                          </CardContent>
-                        </Card>
-                      )}
+                      {canSeeGithub &&
+                        (ghData ? (
+                          <GithubCard data={ghData} />
+                        ) : (
+                          <Card>
+                            <CardContent className="pt-5">
+                              <p className="text-sm text-muted-foreground">
+                                {gh?.status === "RUNNING" || gh?.status === "PENDING"
+                                  ? "GitHub scrape in progress…"
+                                  : student.githubUrl
+                                    ? `GitHub scrape failed: ${gh?.error ?? "unknown error"}`
+                                    : "No GitHub profile provided."}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      {canSeeCoding &&
+                        (lcData ? (
+                          <LeetcodeCard data={lcData} />
+                        ) : (
+                          <Card>
+                            <CardContent className="pt-5">
+                              <p className="text-sm text-muted-foreground">
+                                {lc?.status === "RUNNING" || lc?.status === "PENDING"
+                                  ? "LeetCode scrape in progress…"
+                                  : student.leetcodeUrl
+                                    ? `LeetCode scrape failed: ${lc?.error ?? "unknown error"}`
+                                    : "No LeetCode profile provided."}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        ))}
                     </>
                   );
                 })()}
@@ -433,7 +467,7 @@ export function StudentDetailModal({
                 </h3>
                   <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {SCORE_FIELDS.map((f) => (
+                    {SCORE_FIELDS.filter((f) => scoreFieldAllowed(f.key)).map((f) => (
                       <div key={f.key} className="space-y-1">
                         <Label className="text-xs">
                           {f.label} <span className="text-muted-foreground">/ {f.cap}</span>
