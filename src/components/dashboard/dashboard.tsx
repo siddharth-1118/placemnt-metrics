@@ -70,9 +70,12 @@ function SummaryCell({ s, platform }: { s: StudentDto; platform: "GITHUB" | "LEE
 
 export function Dashboard({
   canScore = true,
+  /** Super admin — may view every section regardless of scopes. */
+  isSuperAdmin = false,
   permissionScopes = [],
 }: {
   canScore?: boolean;
+  isSuperAdmin?: boolean;
   /** Rubric sections this coordinator may view & score; empty = all. */
   permissionScopes?: ScoreScope[];
 }) {
@@ -456,6 +459,7 @@ export function Dashboard({
         <StudentDetailModal
           studentId={selectedId}
           canScore={canScore}
+          isSuperAdmin={isSuperAdmin}
           permissionScopes={permissionScopes}
           onClose={() => setSelectedId(null)}
           onChanged={load}

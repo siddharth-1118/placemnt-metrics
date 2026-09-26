@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X, Loader2,
+  AlertTriangle, Code2, ExternalLink, Github, GraduationCap, Mail, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X, Loader2,
 } from "lucide-react";
 import { Button, Input, Label, Badge, Card, CardContent } from "@/components/ui";
 import { GithubCard } from "@/components/dashboard/github-card";
@@ -100,12 +100,15 @@ function diffRows(s: StudentDto, show: { github: boolean; coding: boolean }) {
 export function StudentDetailModal({
   studentId,
   canScore = true,
+  /** Super admin — may view everything regardless of scopes. */
+  isSuperAdmin = false,
   permissionScopes = [],
   onClose,
   onChanged,
 }: {
   studentId: string;
   canScore?: boolean;
+  isSuperAdmin?: boolean;
   /** Sections this coordinator may view & score; empty = all. */
   permissionScopes?: ScoreScope[];
   onClose: () => void;
@@ -168,25 +171,33 @@ export function StudentDetailModal({
     [scores]
   );
 
+  const viewer = useMemo(
+    () => ({ isSuperAdmin, permissionScopes }),
+    [isSuperAdmin, permissionScopes]
+  );
+
   /** Server strips out-of-scope evidence; hide its score fields client-side too. */
   const scoreFieldAllowed = (key: keyof ScoreBreakdown) =>
-    canWriteScoreField({ isSuperAdmin: false, permissionScopes }, key);
+    isSuperAdmin || canWriteScoreField(viewer, key);
+
+  /** Academic/GitHub/Coding are auto-calculated — everyone may VIEW them. */
+  const canViewSection = (scope: ScoreScope) => hasScopeClient(viewer, scope);
 
   /** Is this specific document/link in one of my sections? */
   const itemAllowed = (category: string, kind: "doc" | "link") =>
     hasScopeClient(
-      { isSuperAdmin: false, permissionScopes },
+      viewer,
       kind === "doc" ? docCategoryScope(category) : linkCategoryScope(category)
     );
   const rows = useMemo(
     () =>
       student
         ? diffRows(student, {
-            github: scoreFieldAllowed("github"),
-            coding: scoreFieldAllowed("coding"),
+            github: canViewSection("GITHUB"),
+            coding: canViewSection("CODING"),
           })
         : [],
-    [student, permissionScopes]
+    [student, viewer]
   );
 
   // Poll while any scrape job is still running/pending.
@@ -220,9 +231,6 @@ export function StudentDetailModal({
           // rejects out-of-scope writes, so restricted fields stay untouched.
           scores: Object.fromEntries(
             Object.entries({
-              academic: Number(scores.academic),
-              github: Number(scores.github),
-              coding: Number(scores.coding),
               internship: Number(scores.internship),
               certifications: Number(scores.certifications),
               projects: Number(scores.projects),
@@ -343,6 +351,74 @@ export function StudentDetailModal({
 
           {student && (
             <>
+              {/* Full student profile */}
+              <section className="rounded-xl border p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <UserRound className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Student profile
+                  </h3>
+                </div>
+                <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {/* Identity */}
+                  <div className="space-y-1.5 text-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Identity</p>
+                    <p className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 text-muted-foreground" /> {student.email}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{student.registerNumber}</p>
+                    {student.facultyAdvisor && (
+                      <p className="text-muted-foreground">FA: <span className="text-foreground">{student.facultyAdvisor}</span></p>
+                    )}
+                  </div>
+                  {/* Academic marks — visible with the ACADEMIC scope */}
+                  {canViewSection("ACADEMIC") && (
+                    <div className="space-y-1.5 text-sm">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <GraduationCap className="h-3.5 w-3.5" /> Academic marks
+                      </p>
+                      <p className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">10th</span>
+                        <span className="font-semibold tabular-nums">{fmtPct(student.tenthPercent)}</span>
+                      </p>
+                      <p className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">12th</span>
+                        <span className="font-semibold tabular-nums">{fmtPct(student.twelfthPercent)}</span>
+                      </p>
+                      <p className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">CGPA</span>
+                        <span className="font-semibold tabular-nums">{student.cgpa.toFixed(2)}</span>
+                      </p>
+                      <p className="flex items-center justify-between gap-3 border-t pt-1.5">
+                        <span className="text-muted-foreground">Auto score</span>
+                        <Badge variant="secondary">
+                          {student.scores.academic.toFixed(1)} / {SCORE_CAPS.academic}
+                        </Badge>
+                      </p>
+                    </div>
+                  )}
+                  {/* Profile links */}
+                  <div className="space-y-1.5 text-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Profiles</p>
+                    {canViewSection("GITHUB") &&
+                      (student.githubUrl ? (
+                        <a href={student.githubUrl} target="_blank" rel="noreferrer noopener" className="flex items-center gap-2 text-primary hover:underline">
+                          <Github className="h-3.5 w-3.5" /> GitHub profile <ExternalLink className="h-3 w-3 opacity-60" />
+                        </a>
+                      ) : (
+                        <p className="text-muted-foreground">GitHub — not provided</p>
+                      ))}
+                    {canViewSection("CODING") &&
+                      (student.leetcodeUrl ? (
+                        <a href={student.leetcodeUrl} target="_blank" rel="noreferrer noopener" className="flex items-center gap-2 text-primary hover:underline">
+                          <Code2 className="h-3.5 w-3.5" /> LeetCode profile <ExternalLink className="h-3 w-3 opacity-60" />
+                        </a>
+                      ) : (
+                        <p className="text-muted-foreground">LeetCode — not provided</p>
+                      ))}
+                    <p className="text-xs text-muted-foreground">Submitted {timeAgo(student.createdAt)}</p>
+                  </div>
+                </div>
+              </section>
+
               {/* Submitted vs scraped comparison */}
               {rows.length > 0 && (
                 <section>
@@ -403,8 +479,8 @@ export function StudentDetailModal({
                   const lc = student.scrapes.find((s) => s.platform === "LEETCODE");
                   const ghData = gh?.data && "publicRepos" in gh.data ? gh.data : null;
                   const lcData = lc?.data && "solvedTotal" in lc.data ? lc.data : null;
-                  const canSeeGithub = scoreFieldAllowed("github");
-                  const canSeeCoding = scoreFieldAllowed("coding");
+                  const canSeeGithub = canViewSection("GITHUB");
+                  const canSeeCoding = canViewSection("CODING");
                   return (
                     <>
                       {canSeeGithub &&
