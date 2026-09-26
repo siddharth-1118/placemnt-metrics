@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, hasScope } from "@/lib/auth";
+import { docCategoryScope } from "@/lib/scopes";
 import { getDocument } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +9,12 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/documents/:id/file — stream the stored document.
  *
- * Access: the owner, or the assigned evaluator. A valid `?token=` matching the
- * student's uploadToken is also accepted so files open in new tabs/iframe
- * viewers where the session cookie may not be forwarded.
+ * Access: the owner, or an evaluator whose ASSIGNED SECTIONS cover this
+ * document's category (a hackathons-only coordinator cannot pull a
+ * marksheet by guessing its id, even though section-filtered lists never
+ * show it). A valid `?token=` matching the student's uploadToken is also
+ * accepted so files open in new tabs/iframe viewers where the session
+ * cookie may not be forwarded.
  */
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const user = await getSessionUser();
@@ -24,11 +28,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 
   const token = new URL(req.url).searchParams.get("token");
-  const isEvaluator = user?.canViewSubmissions ?? false;
   const isOwner = user?.id === doc.studentId;
   const tokenOk = token !== null && token === doc.student.uploadToken;
+  const isAllowedEvaluator =
+    !!user && user.canViewSubmissions && hasScope(user, docCategoryScope(doc.category));
 
-  if (!isOwner && !isEvaluator && !tokenOk) {
+  if (!isOwner && !tokenOk && !isAllowedEvaluator) {
     return NextResponse.json({ error: "Not authorized to view this document" }, { status: 403 });
   }
 
