@@ -1,125 +1,145 @@
+"use client";
+
 import Link from "next/link";
 import {
-  ArrowRight, BarChart3, Github, LayoutDashboard, ScanEye, Trophy,
+  GraduationCap,
+  LogIn,
+  UserPlus,
+  ArrowRight,
 } from "lucide-react";
-import { Badge } from "@/components/ui";
-
-const features = [
-  {
-    icon: ScanEye,
-    kicker: "No screenshots",
-    title: "Claims become evidence",
-    body: "GitHub repositories, stars, contribution heatmaps and LeetCode solved counts are pulled live the moment a profile is submitted — then frozen into the student's record.",
-  },
-  {
-    icon: BarChart3,
-    kicker: "Capped & auditable",
-    title: "A rubric you can defend",
-    body: "Academics, GitHub, coding platforms, projects, internships, extras. Every mark has a cap, every cap has a reason, and the breakdown stays visible on every row.",
-  },
-  {
-    icon: Trophy,
-    kicker: "Dense ranking",
-    title: "Ties handled fairly",
-    body: "Scores recompute the leaderboard the second a coordinator signs off. Equal totals share a rank — no artificial ordering between equals.",
-  },
-];
+import { SRM_OFFICIAL_METRICS } from "@/lib/types";
 
 export default function HomePage() {
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-14 pt-8 sm:px-6 sm:pt-16">
-      {/* Hero */}
-      <section className="relative animate-rise">
-        <Badge variant="default" className="mb-5 px-3 py-1">
-          <Github className="h-3 w-3" />
-          Verified coding profiles · AO1 Batch
-        </Badge>
-        <h1 className="max-w-3xl text-[2.15rem] font-bold leading-[1.06] tracking-[-0.035em] sm:text-6xl">
-          Marks tell half the story.
-          <span className="text-gradient block drop-shadow-[0_0_28px_hsl(265_95%_60%/0.35)]">
-            We verify the other half.
-          </span>
+    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
+      {/* 1. Main Welcome Header */}
+      <div className="text-center">
+        <div className="mx-auto mb-3 inline-flex items-center gap-1.5 rounded border border-[#d6cfc0] bg-white px-3 py-1 text-xs font-semibold text-[#1c2024] dark:border-[#323d4c] dark:bg-[#1b222c] dark:text-[#f0ede6]">
+          <GraduationCap className="h-3.5 w-3.5 text-[#165b33] dark:text-[#78d69f]" />
+          <span>SRM Institute of Science and Technology · School of Computing</span>
+        </div>
+
+        <h1 className="text-2xl font-bold tracking-tight text-[#1c2024] dark:text-white sm:text-4xl">
+          Placement Matrix Portal
         </h1>
-        <p className="mt-6 max-w-2xl text-[17px] leading-relaxed text-muted-foreground">
-          Students submit their academic profile and coding handles. The portal verifies every
-          claim against live data from GitHub and LeetCode, and placement coordinators rank the
-          batch on a transparent 100-mark rubric.
+
+        <p className="mx-auto mt-2 max-w-2xl text-xs sm:text-sm text-[#5c6470] dark:text-[#94a3b8]">
+          Official placement evaluation and matrix calculation system for Batches 2022–2026 &amp; 2023–2027.
         </p>
 
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <Link
-            href="/student/submit"
-            className="group inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[hsl(262_95%_68%)] to-[hsl(255_85%_57%)] px-6 py-3 text-sm font-semibold text-white shadow-[0_4px_24px_-4px_hsl(258_95%_60%/0.7),inset_0_1px_0_hsl(0_0%_100%/0.35)] transition-all duration-200 hover:shadow-[0_10px_40px_-6px_hsl(270_95%_62%/0.8),inset_0_1px_0_hsl(0_0%_100%/0.35)] active:scale-[0.98]"
-          >
-            Submit your profile
-            <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-          </Link>
-          <Link
-            href="/coordinator/dashboard"
-            className="glass inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-foreground/90 transition-all duration-200 hover:brightness-[1.2] active:scale-[0.98]"
-          >
-            <LayoutDashboard className="h-4 w-4 opacity-70" />
-            Coordinator dashboard
-          </Link>
-        </div>
-
-        {/* Rubric strip */}
-        <div className="glass mt-14 rounded-2xl p-5 sm:p-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-semibold tracking-[-0.015em]">The 100 marks, in the open</h2>
-            <span className="text-xs text-muted-foreground">
-              Every coordinator scores against the same caps
-            </span>
-          </div>
-          <div className="mt-4 grid gap-2.5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              ["Academic marks", "10th + 12th + CGPA", 40],
-              ["GitHub profile", "repos · commits · stars", 15],
-              ["Coding platforms", "LeetCode solved & rating", 10],
-              ["Projects", "verified links", 10],
-              ["Internships", "verified documents", 10],
-              ["Extras", "certs · competitions · SHL", 15],
-            ].map(([title, sub, cap]) => (
-              <div
-                key={title as string}
-                className="glass-inset flex items-center justify-between rounded-xl px-3.5 py-2.5 transition-colors hover:bg-white/[0.07]"
-              >
-                <div className="min-w-0">
-                  <p className="font-medium leading-tight">{title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{sub}</p>
-                </div>
-                <span className="text-gradient-gold tnum ml-3 shrink-0 text-xl font-bold">
-                  {cap}
-                </span>
+        {/* 2. Two Clear Actions: Login & Register */}
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 max-w-xl mx-auto">
+          {/* Option A: Login */}
+          <div className="flex flex-col justify-between rounded-md border border-[#e2ded5] bg-white p-5 text-left dark:border-[#262f3c] dark:bg-[#1b222c]">
+            <div>
+              <div className="flex h-9 w-9 items-center justify-center rounded bg-[#eaf4ed] text-[#165b33] dark:bg-[#153422] dark:text-[#78d69f]">
+                <LogIn className="h-4 w-4" />
               </div>
-            ))}
+              <h2 className="mt-3 text-sm font-bold text-[#1c2024] dark:text-white">
+                Student &amp; Coordinator Login
+              </h2>
+              <p className="mt-1 text-xs text-[#5c6470] dark:text-[#94a3b8]">
+                Access your placement scores, uploaded documents, or coordinator evaluation dashboard.
+              </p>
+            </div>
+
+            <div className="mt-5">
+              <Link
+                href="/login"
+                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#165b33] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#124929]"
+              >
+                <span>Login</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              <p className="mt-2 text-center text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+                Already registered? <Link href="/login" className="font-semibold text-[#165b33] hover:underline dark:text-[#78d69f]">Login</Link>
+              </p>
+            </div>
+          </div>
+
+          {/* Option B: Register */}
+          <div className="flex flex-col justify-between rounded-md border border-[#e2ded5] bg-white p-5 text-left dark:border-[#262f3c] dark:bg-[#1b222c]">
+            <div>
+              <div className="flex h-9 w-9 items-center justify-center rounded bg-[#f0ece4] text-[#474f5a] dark:bg-[#232b36] dark:text-[#cbd5e1]">
+                <UserPlus className="h-4 w-4" />
+              </div>
+              <h2 className="mt-3 text-sm font-bold text-[#1c2024] dark:text-white">
+                New Student Registration
+              </h2>
+              <p className="mt-1 text-xs text-[#5c6470] dark:text-[#94a3b8]">
+                Submit your academic marks, GitHub, and LeetCode handles to calculate your placement matrix score.
+              </p>
+            </div>
+
+            <div className="mt-5">
+              <Link
+                href="/student/submit"
+                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-[#165b33] bg-white px-4 py-2 text-xs font-semibold text-[#165b33] transition hover:bg-[#eaf4ed] dark:border-[#20683f] dark:bg-[#1b222c] dark:text-[#78d69f] dark:hover:bg-[#153422]"
+              >
+                <span>Register</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              <p className="mt-2 text-center text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+                New here? <Link href="/student/submit" className="font-semibold text-[#165b33] hover:underline dark:text-[#78d69f]">Create an account</Link>
+              </p>
+            </div>
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* Features */}
-      <section className="mt-8 grid gap-4 sm:grid-cols-3">
-        {features.map((f) => (
-          <div key={f.title} className="glass glass-hover rounded-2xl p-5">
-            <div className="flex items-center justify-between">
-              <span className="glass-inset flex h-10 w-10 items-center justify-center rounded-xl">
-                <f.icon className="h-5 w-5 text-[hsl(258_100%_80%)]" />
-              </span>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70">
-                {f.kicker}
-              </span>
-            </div>
-            <h2 className="mt-4 font-semibold tracking-[-0.015em]">{f.title}</h2>
-            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{f.body}</p>
-          </div>
-        ))}
-      </section>
+      {/* 3. Placement Matrix Overview (Simple College Reference Table) */}
+      <div id="matrix" className="mt-14 rounded-md border border-[#e2ded5] bg-white dark:border-[#262f3c] dark:bg-[#1b222c]">
+        <div className="border-b border-[#e2ded5] p-4 dark:border-[#262f3c]">
+          <h2 className="text-sm font-bold text-[#1c2024] dark:text-white">
+            Placement Matrix Evaluation Standard (100 Marks)
+          </h2>
+          <p className="mt-0.5 text-xs text-[#5c6470] dark:text-[#94a3b8]">
+            Official evaluation criteria for School of Computing batches (2022–2026 &amp; 2023–2027).
+          </p>
+        </div>
 
-      {/* Quiet closing line */}
-      <p className="mx-auto mt-16 max-w-xl text-center text-sm text-muted-foreground">
-        Built for the School of Computing&apos;s placement cell — because a rank list is only as
-        strong as the evidence behind it.
-      </p>
+        <div className="overflow-x-auto">
+          <table className="portal-table">
+            <thead>
+              <tr>
+                <th className="w-12">#</th>
+                <th>Evaluation Metric</th>
+                <th className="text-center w-24">Marks</th>
+                <th>Evaluation Criteria &amp; Mark Split-Up</th>
+              </tr>
+            </thead>
+            <tbody>
+              {SRM_OFFICIAL_METRICS.map((metric, idx) => (
+                <tr key={metric.id}>
+                  <td className="text-stone-400 font-medium">{idx + 1}</td>
+                  <td className="font-semibold text-stone-900 dark:text-white">
+                    {metric.name}
+                  </td>
+                  <td className="text-center font-bold text-[#165b33] dark:text-[#78d69f]">
+                    {metric.allottedMarks} M
+                  </td>
+                  <td className="text-stone-600 dark:text-stone-300">
+                    {metric.splitUp}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-[#faf8f5] font-bold dark:bg-[#161c24]">
+                <td colSpan={2} className="text-stone-900 dark:text-white">
+                  Total Placement Matrix Score
+                </td>
+                <td className="text-center font-extrabold text-[#165b33] dark:text-[#78d69f]">
+                  100.0 M
+                </td>
+                <td className="text-stone-500 font-normal text-xs">
+                  Calculated from 13 verified academic, coding, project &amp; internship components
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

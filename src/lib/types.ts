@@ -25,6 +25,96 @@ export const SCORE_CAPS = {
 
 export const TOTAL_CAP = 100;
 
+/**
+ * The official SRM School of Computing placement metrics (AO1 rubric, 100
+ * marks) — used for the on-screen "Matrix Rules" reference table. The 13
+ * official metrics collapse into the 11 scored components of SCORE_CAPS
+ * (academic combines 10th + 12th + CGPA; projects/in-house/FSD are shown
+ * separately here but stored as three score fields).
+ */
+export type OfficialMetric = { id: string; name: string; allottedMarks: number; splitUp: string };
+
+export const SRM_OFFICIAL_METRICS: OfficialMetric[] = [
+  {
+    id: "academic-10th",
+    name: "Academic — 10th Standard",
+    allottedMarks: 2.5,
+    splitUp: "Auto from submitted marks: 96–100% → 2.5 · 91–95% → 2 · 86–90% → 1.5 · 75–85% → 1 · <75% → 0.5",
+  },
+  {
+    id: "academic-12th",
+    name: "Academic — 12th Standard",
+    allottedMarks: 2.5,
+    splitUp: "Auto from submitted marks: same bands as 10th standard",
+  },
+  {
+    id: "academic-cgpa",
+    name: "Academic — Degree CGPA",
+    allottedMarks: 5,
+    splitUp: "Auto: >9.5 → 5 · 9.1–9.5 → 4 · 8.6–9 → 3 · 7.5–8.5 → 2 · <7.5 → 1",
+  },
+  {
+    id: "github",
+    name: "GitHub Profile & Contributions",
+    allottedMarks: 15,
+    splitUp: "Auto from live scrape: contributions/repos (5) · monthly frequency (2) · community/stars (3) · collaborations/forks (5)",
+  },
+  {
+    id: "coding",
+    name: "Coding Practice Platform",
+    allottedMarks: 10,
+    splitUp: "Auto from LeetCode scrape: badges/contest activity (5) · medium & hard problems solved (5)",
+  },
+  {
+    id: "internship",
+    name: "Internships & Research",
+    allottedMarks: 10,
+    splitUp: "DRDO/ISRO/IIT/NIT/research (5) · Fortune-500 (4) · small company (3) · <3 months (2) · paid (+1)",
+  },
+  {
+    id: "certifications",
+    name: "Skills & Global Certifications",
+    allottedMarks: 15,
+    splitUp: "Global certification (5 each) · NPTEL (2) · Coursera/others (1) · max 5 courses counted",
+  },
+  {
+    id: "projects",
+    name: "Projects Done",
+    allottedMarks: 5,
+    splitUp: "IIT/NIT/DRDO-guided (5) · full application (3) · mini project (1–2) · max 3 projects",
+  },
+  {
+    id: "fullstack",
+    name: "Full-stack Development",
+    allottedMarks: 5,
+    splitUp: "One FSD project (frontend + backend + database) = 5",
+  },
+  {
+    id: "hackathons",
+    name: "Hackathons & Coding Competitions",
+    allottedMarks: 10,
+    splitUp: "1st prize (5) · 2nd (4) · 3rd (3) · participation (1) · max 4 entries",
+  },
+  {
+    id: "inhouse",
+    name: "In-house Projects (UROP/SERI)",
+    allottedMarks: 8,
+    splitUp: "UROP/SERI/special-lab project (4 each) · max 2 projects",
+  },
+  {
+    id: "membership",
+    name: "Professional Memberships",
+    allottedMarks: 2,
+    splitUp: "Valid IEEE/IET/ACM/CSI/ISTE membership = 2",
+  },
+  {
+    id: "shl",
+    name: "SHL / Talent Discovery / NCET",
+    allottedMarks: 10,
+    splitUp: "Assessment score bands: 90–100 → 10 · 80–89 → 8 · 70–79 → 6 · 60–69 → 4 · 50–59 → 2 · <50 → 1",
+  },
+];
+
 export interface ProofLink {
   label: string;
   url: string;

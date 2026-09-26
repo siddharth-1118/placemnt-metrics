@@ -3,46 +3,74 @@
 @tailwind utilities;
 
 /* ==========================================================================
-   Design tokens — "midnight iris"
-   Deep-space indigo canvas, luminous violet→fuchsia primary, gold for ranks,
-   emerald for verified. Glass is smoked: dark translucent panels with bright
-   hairlines. Everything glows a little; nothing is flat white.
+   Design Tokens — Modern University Administration Portal
+   Clean, institutional, calm, practical, trustworthy.
+   Palette: Warm off-white / ivory canvas, charcoal text, deep forest green
+   accent, subtle warm gray borders, selective muted amber/red for status.
+   No neon, no glassmorphism, no gradient backgrounds.
    ========================================================================== */
 
 @layer base {
   :root {
-    --background: 242 34% 6%;
-    --foreground: 220 35% 96%;
+    /* Warm off-white / ivory canvas */
+    --background: 40 20% 98%;
+    --foreground: 220 20% 13%;
 
-    --card: 240 28% 10%;
-    --card-foreground: 220 35% 96%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 13%;
 
-    --primary: 258 90% 66%;
+    /* Deep forest green primary accent */
+    --primary: 152 60% 22%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 22% 14%;
-    --secondary-foreground: 220 30% 92%;
+    --secondary: 40 12% 93%;
+    --secondary-foreground: 220 20% 13%;
 
-    --muted: 240 22% 15%;
-    --muted-foreground: 227 14% 64%;
+    --muted: 40 12% 94%;
+    --muted-foreground: 215 14% 42%;
 
-    --accent: 240 24% 18%;
-    --accent-foreground: 220 35% 96%;
+    --accent: 40 12% 93%;
+    --accent-foreground: 220 20% 13%;
 
-    --destructive: 352 80% 60%;
+    --destructive: 0 65% 42%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 240 20% 20%;
-    --input: 240 20% 22%;
-    --ring: 258 90% 70%;
+    --border: 40 12% 86%;
+    --input: 40 12% 86%;
+    --ring: 152 60% 22%;
 
-    --radius: 1rem;
+    --radius: 0.375rem;
+  }
 
-    /* Smoked-glass recipe */
-    --glass-bg: 240 30% 12%;
-    --glass-alpha: 0.55;
-    --glass-highlight: 0 0% 100%;
-    --glass-line: 240 40% 80%;
+  .dark {
+    /* Institutional charcoal canvas */
+    --background: 215 28% 12%;
+    --foreground: 40 15% 94%;
+
+    --card: 215 25% 15%;
+    --card-foreground: 40 15% 94%;
+
+    /* Muted forest spruce primary */
+    --primary: 152 46% 38%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 215 20% 19%;
+    --secondary-foreground: 40 15% 94%;
+
+    --muted: 215 20% 19%;
+    --muted-foreground: 215 12% 64%;
+
+    --accent: 215 20% 19%;
+    --accent-foreground: 40 15% 94%;
+
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 18% 22%;
+    --input: 215 18% 24%;
+    --ring: 152 46% 38%;
+
+    --radius: 0.375rem;
   }
 
   * {
@@ -61,194 +89,37 @@
   }
 
   ::selection {
-    background: hsl(var(--primary) / 0.35);
-    color: hsl(0 0% 100%);
+    background: hsl(var(--primary) / 0.2);
+    color: inherit;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background: hsl(var(--border));
-    border-radius: 9999px;
+    border-radius: 4px;
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
   }
 }
 
-/* ==========================================================================
-   Ambient backdrop — saturated aurora over deep space + fine grain
-   ========================================================================== */
-
-.aurora {
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.aurora::before,
-.aurora::after {
-  content: "";
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(100px);
-}
-
-.aurora::before {
-  width: 60rem;
-  height: 60rem;
-  top: -26rem;
-  right: -16rem;
-  opacity: 0.5;
-  background: radial-gradient(
-    circle at 35% 35%,
-    hsl(275 95% 60% / 0.55),
-    hsl(320 90% 55% / 0.25) 50%,
-    transparent 74%
-  );
-}
-
-.aurora::after {
-  width: 54rem;
-  height: 54rem;
-  bottom: -24rem;
-  left: -14rem;
-  opacity: 0.45;
-  background: radial-gradient(
-    circle at 60% 55%,
-    hsl(200 95% 55% / 0.4),
-    hsl(180 90% 50% / 0.18) 52%,
-    transparent 76%
-  );
-}
-
-.aurora-ember {
-  position: absolute;
-  width: 30rem;
-  height: 30rem;
-  top: 34%;
-  left: 56%;
-  border-radius: 9999px;
-  filter: blur(90px);
-  opacity: 0.3;
-  background: radial-gradient(
-    circle at 50% 50%,
-    hsl(285 90% 62% / 0.5),
-    transparent 70%
-  );
-}
-
-.grain {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.35;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.06'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-/* ==========================================================================
-   Glass materials — smoked
-   ========================================================================== */
-
+/* Institutional Table Utilities */
 @layer components {
-  .glass {
-    background: hsl(var(--glass-bg) / var(--glass-alpha));
-    -webkit-backdrop-filter: blur(18px) saturate(1.6);
-    backdrop-filter: blur(18px) saturate(1.6);
-    box-shadow:
-      inset 0 1px 0 hsl(var(--glass-highlight) / 0.1),
-      0 1px 2px hsl(0 0% 0% / 0.4),
-      0 12px 40px -8px hsl(250 60% 4% / 0.6);
+  .portal-table {
+    @apply w-full text-left text-xs border-collapse;
   }
-
-  /* Bright hairline that fades around the panel — the signature edge */
-  .glass::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(
-      150deg,
-      hsl(var(--glass-line) / 0.45),
-      hsl(var(--primary) / 0.16) 28%,
-      transparent 55%,
-      hsl(var(--glass-line) / 0.14) 85%,
-      hsl(var(--glass-line) / 0.35)
-    );
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask-composite: exclude;
-    pointer-events: none;
+  .portal-table th {
+    @apply border-b border-border bg-stone-100/80 px-3.5 py-2.5 font-semibold text-stone-700 dark:bg-slate-800/80 dark:text-stone-300;
   }
-
-  .glass-strong {
-    background: hsl(var(--glass-bg) / 0.78);
-    -webkit-backdrop-filter: blur(28px) saturate(1.7);
-    backdrop-filter: blur(28px) saturate(1.7);
-    box-shadow:
-      inset 0 1px 0 hsl(var(--glass-highlight) / 0.12),
-      0 2px 8px hsl(0 0% 0% / 0.45),
-      0 32px 80px -20px hsl(255 70% 3% / 0.8);
+  .portal-table td {
+    @apply border-b border-border/60 px-3.5 py-2.5 text-stone-800 dark:text-stone-200;
   }
-
-  .glass-inset {
-    background: hsl(0 0% 100% / 0.045);
-    box-shadow:
-      inset 0 1px 3px hsl(0 0% 0% / 0.45),
-      inset 0 -1px 0 hsl(var(--glass-highlight) / 0.06);
+  .portal-table tr:hover td {
+    @apply bg-stone-50 dark:bg-slate-800/40;
   }
-
-  .glass-hover {
-    transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .glass-hover:hover {
-    transform: translateY(-2px);
-    box-shadow:
-      inset 0 1px 0 hsl(var(--glass-highlight) / 0.14),
-      0 2px 6px hsl(0 0% 0% / 0.4),
-      0 24px 56px -12px hsl(265 90% 30% / 0.55);
-  }
-
-  /* Soft primary glow behind hero elements */
-  .glow {
-    box-shadow:
-      0 0 0 1px hsl(var(--primary) / 0.25),
-      0 8px 40px -6px hsl(var(--primary) / 0.45);
-  }
-}
-
-/* ==========================================================================
-   Typography — gradient ink, tabular numerals
-   ========================================================================== */
-
-@layer components {
-  .text-gradient {
-    background: linear-gradient(
-      100deg,
-      hsl(200 100% 72%) 0%,
-      hsl(258 100% 74%) 42%,
-      hsl(320 100% 72%) 100%
-    );
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .text-gradient-gold {
-    background: linear-gradient(100deg, hsl(45 100% 68%), hsl(35 100% 60%));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
   .tnum {
     font-variant-numeric: tabular-nums;
   }
