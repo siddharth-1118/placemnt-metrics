@@ -2,70 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Award, Calculator, ChevronsUpDown, Code2, FileCheck2, Github, Loader2, RefreshCw, Search, Users,
+  Calculator,
+  Download,
+  Loader2,
+  RefreshCw,
+  Search,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
-import { Badge, Button, Card, CardContent, Input } from "@/components/ui";
+import { Badge, Button, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
-import { fmtPct, timeAgo } from "@/lib/utils";
-import type { StudentDto } from "@/lib/types";
+import { SRM_OFFICIAL_METRICS, type StudentDto } from "@/lib/types";
 
 type SortKey = "rank" | "totalScore" | "cgpa" | "name" | "registerNumber";
 type StatusFilter = "ALL" | "PENDING" | "VERIFIED";
-type ProfileFilter = "ALL" | "BOTH" | "GITHUB_ONLY" | "LEETCODE_ONLY" | "NONE";
-
-function scrapeSummary(s: StudentDto, platform: "GITHUB" | "LEETCODE") {
-  const job = s.scrapes.find((x) => x.platform === platform);
-  if (!job) return { text: "not provided", tone: "muted" as const };
-  if (job.status === "RUNNING" || job.status === "PENDING") return { text: "scraping…", tone: "warn" as const };
-  if (job.status === "FAILED") return { text: "failed", tone: "bad" as const };
-  if (platform === "GITHUB" && job.data && "publicRepos" in job.data) {
-    const d = job.data;
-    return { text: `${d.publicRepos} repos · ★${d.totalStars} · ${d.contributionsLastYear} commits`, tone: "good" as const };
-  }
-  if (platform === "LEETCODE" && job.data && "solvedTotal" in job.data) {
-    const d = job.data;
-    const rating = d.contestRating !== null ? ` · ${Math.round(d.contestRating)} rating` : "";
-    return { text: `${d.solvedTotal} solved${rating}`, tone: "good" as const };
-  }
-  return { text: "—", tone: "muted" as const };
-}
-
-function DocsCell({ s }: { s: StudentDto }) {
-  const docs = s.documents?.length ?? 0;
-  const links = s.projectLinks?.length ?? 0;
-  if (docs === 0 && links === 0) {
-    return <span className="text-muted-foreground">—</span>;
-  }
-  const verified = (s.documents ?? []).filter((d) => d.status === "VERIFIED").length
-    + (s.projectLinks ?? []).filter((l) => l.status === "VERIFIED").length;
-  const total = docs + links;
-  const rejected = (s.documents ?? []).filter((d) => d.status === "REJECTED").length
-    + (s.projectLinks ?? []).filter((l) => l.status === "REJECTED").length;
-  return (
-    <span className="inline-flex items-center gap-1 text-xs">
-      <FileCheck2 className="h-3.5 w-3.5 opacity-70" />
-      <span className="tabular-nums">{verified}/{total}</span>
-      {rejected > 0 && <span className="text-destructive">· {rejected} rej</span>}
-    </span>
-  );
-}
-
-function SummaryCell({ s, platform }: { s: StudentDto; platform: "GITHUB" | "LEETCODE" }) {
-  const { text, tone } = scrapeSummary(s, platform);
-  const cls = {
-    good: "text-foreground",
-    warn: "text-amber-600",
-    bad: "text-destructive",
-    muted: "text-muted-foreground",
-  }[tone];
-  const Icon = platform === "GITHUB" ? Github : Code2;
-  return (
-    <span className={`inline-flex items-center gap-1.5 ${cls}`}>
-      <Icon className="h-3.5 w-3.5 shrink-0 opacity-70" />
-      <span className="truncate">{text}</span>
-    </span>
-  );
-}
+type ActiveSection = "STUDENTS" | "SCORES" | "MATRIX" | "REPORTS";
 
 export function Dashboard() {
   const [students, setStudents] = useState<StudentDto[]>([]);
@@ -73,40 +24,31 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [profileFilter, setProfileFilter] = useState<ProfileFilter>("ALL");
-  const [sortKey, setSortKey] = useState<SortKey>("totalScore");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [sortKey, setSortKey] = useState<SortKey>("rank");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
-
-  async function recalculate() {
-    setRecalcBusy(true);
-    setRecalcMsg(null);
-    try {
-      const res = await fetch("/api/students/recalculate", { method: "POST" });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error ?? "Recalculate failed");
-      setRecalcMsg(body.message ?? "Done.");
-      await load();
-    } catch (e) {
-      setRecalcMsg((e as Error).message);
-    } finally {
-      setRecalcBusy(false);
-      setTimeout(() => setRecalcMsg(null), 6000);
-    }
-  }
+  const [activeSection, setActiveSection] = useState<ActiveSection>("STUDENTS");
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/students", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to load students");
-      const body = await res.json();
-      setStudents(body.students);
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          setError("Access restricted to authorized faculty coordinators.");
+        } else {
+          setError("Failed to load student placement records.");
+        }
+        return;
+      }
+      const data = await res.json();
+      setStudents(data.students ?? []);
+    } catch {
+      setError("Network connection error. Could not reach server.");
     } finally {
       setLoading(false);
     }
@@ -116,25 +58,81 @@ export function Dashboard() {
     load();
   }, [load]);
 
-  // Poll for scrape completions while anything is in flight.
-  const anyRunning = students.some((s) => s.scrapes.some((j) => j.status === "RUNNING" || j.status === "PENDING"));
-  useEffect(() => {
-    if (!anyRunning) return;
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
-  }, [anyRunning, load]);
+  async function recalculate() {
+    setRecalcBusy(true);
+    setRecalcMsg(null);
+    try {
+      const res = await fetch("/api/students/recalculate", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Recalculation failed");
+      setRecalcMsg(
+        `Score recalculation complete: ${data.updatedScores} student scores and ranks updated.`
+      );
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Recalculation failed");
+    } finally {
+      setRecalcBusy(false);
+    }
+  }
+
+  function exportToCsv() {
+    if (!students.length) return;
+    const headers = [
+      "Rank",
+      "Register Number",
+      "Full Name",
+      "Email",
+      "CGPA",
+      "Academic Score (10)",
+      "GitHub Score (15)",
+      "Coding Score (10)",
+      "Projects Score (18)",
+      "Internship Score (10)",
+      "Extras Score (37)",
+      "Matrix Score (100)",
+      "Status",
+    ];
+
+    const rows = students.map((s) => [
+      s.rank ?? "—",
+      `"${s.registerNumber}"`,
+      `"${s.fullName}"`,
+      `"${s.email}"`,
+      s.cgpa,
+      s.scores.academic,
+      s.scores.github,
+      s.scores.coding,
+      s.scores.projects,
+      s.scores.internship,
+      s.scores.extras,
+      s.scores.total,
+      s.status,
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `SRM_Placement_Matrix_Cohort_Report_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = students.filter((s) => {
-      if (q && !`${s.fullName} ${s.registerNumber} ${s.email}`.toLowerCase().includes(q)) return false;
+      if (q && !`${s.fullName} ${s.registerNumber} ${s.email}`.toLowerCase().includes(q))
+        return false;
       if (statusFilter !== "ALL" && s.status !== statusFilter) return false;
-      if (profileFilter === "BOTH" && !(s.githubUrl && s.leetcodeUrl)) return false;
-      if (profileFilter === "GITHUB_ONLY" && (!s.githubUrl || s.leetcodeUrl)) return false;
-      if (profileFilter === "LEETCODE_ONLY" && (s.githubUrl || !s.leetcodeUrl)) return false;
-      if (profileFilter === "NONE" && (s.githubUrl || s.leetcodeUrl)) return false;
       return true;
     });
+
     const dir = sortDir === "asc" ? 1 : -1;
     list = [...list].sort((a, b) => {
       switch (sortKey) {
@@ -154,28 +152,22 @@ export function Dashboard() {
       }
     });
     return list;
-  }, [students, query, statusFilter, profileFilter, sortKey, sortDir]);
+  }, [students, query, statusFilter, sortKey, sortDir]);
 
-  const stats = useMemo(
-    () => ({
+  const stats = useMemo(() => {
+    const verifiedCount = students.filter((s) => s.status === "VERIFIED").length;
+    const pendingCount = students.filter((s) => s.status === "PENDING").length;
+    return {
       total: students.length,
-      verified: students.filter((s) => s.status === "VERIFIED").length,
-      pending: students.filter((s) => s.status === "PENDING").length,
+      verified: verifiedCount,
+      pending: pendingCount,
       avgScore: students.length
-        ? Math.round((students.reduce((a, s) => a + s.scores.total, 0) / students.length) * 10) / 10
+        ? Math.round(
+            (students.reduce((a, s) => a + s.scores.total, 0) / students.length) * 10
+          ) / 10
         : 0,
-    }),
-    [students]
-  );
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir(key === "name" || key === "registerNumber" ? "asc" : "desc");
-    }
-  }
+    };
+  }, [students]);
 
   async function rescrape(s: StudentDto, e: React.MouseEvent) {
     e.stopPropagation();
@@ -188,223 +180,495 @@ export function Dashboard() {
     }
   }
 
-  const selectCls =
-    "h-9.5 glass-inset rounded-[calc(var(--radius)-6px)] border-0 px-3 text-sm shadow-none outline-none transition focus-visible:ring-2 focus-visible:ring-ring/50";
-
   return (
     <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: "Students", value: stats.total, icon: Users },
-          { label: "Verified", value: stats.verified, icon: Award },
-          { label: "Pending review", value: stats.pending, icon: Loader2 },
-          { label: "Avg. score", value: stats.avgScore, icon: Award },
-        ].map((c) => (
-          <Card key={c.label} className="glass-hover">
-            <CardContent className="flex items-center gap-3 pt-5">
-              <span className="glass-inset flex h-10 w-10 items-center justify-center rounded-xl">
-                <c.icon className="h-4.5 w-4.5 text-primary" />
-              </span>
-              <div>
-                <p className="tnum text-xl font-bold leading-tight tracking-[-0.02em]">{c.value}</p>
-                <p className="text-xs text-muted-foreground">{c.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-8"
-            placeholder="Search name, register number or email…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
+      {/* 1. Header: Page Title & Short Description */}
+      <div className="flex flex-col justify-between gap-3 border-b border-[#e2ded5] pb-4 dark:border-[#262f3c] sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-[#1c2024] dark:text-white">
+            Coordinator Dashboard
+          </h1>
+          <p className="mt-0.5 text-xs text-[#5c6470] dark:text-[#94a3b8]">
+            Manage student placement scores and placement matrix records.
+          </p>
         </div>
-        <select className={selectCls} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} aria-label="Filter by status">
-          <option value="ALL">All statuses</option>
-          <option value="PENDING">Pending</option>
-          <option value="VERIFIED">Verified</option>
-        </select>
-        <select className={selectCls} value={profileFilter} onChange={(e) => setProfileFilter(e.target.value as ProfileFilter)} aria-label="Filter by linked profiles">
-          <option value="ALL">All profiles</option>
-          <option value="BOTH">GitHub + LeetCode</option>
-          <option value="GITHUB_ONLY">GitHub only</option>
-          <option value="LEETCODE_ONLY">LeetCode only</option>
-          <option value="NONE">No profiles</option>
-        </select>
-        <Button variant="outline" onClick={load}>
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </Button>
-        <Button
-          variant="outline"
-          onClick={recalculate}
-          disabled={recalcBusy}
-          title="Rebuild academic scores and totals from stored marks (fixes rows from older builds)"
-        >
-          {recalcBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
-          Recalculate scores
-        </Button>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+            className="h-8 text-xs"
+          >
+            <RefreshCw className={`mr-1 h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+            <span>Refresh</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={recalculate}
+            disabled={recalcBusy}
+            className="h-8 text-xs text-[#165b33] border-[#b8ddc4] hover:bg-[#eaf4ed] dark:border-[#265335] dark:text-[#78d69f] dark:hover:bg-[#133822]"
+          >
+            {recalcBusy ? (
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            ) : (
+              <Calculator className="mr-1 h-3 w-3" />
+            )}
+            <span>Recalculate Scores</span>
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={exportToCsv}
+            disabled={!students.length}
+            className="h-8 bg-[#165b33] text-xs font-medium text-white hover:bg-[#124929]"
+          >
+            <Download className="mr-1 h-3 w-3" />
+            <span>Export CSV Report</span>
+          </Button>
+        </div>
       </div>
 
       {recalcMsg && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-600">
-          {recalcMsg}
+        <div className="flex items-center gap-2 rounded border border-[#b8ddc4] bg-[#eaf4ed] px-3.5 py-2 text-xs text-[#165b33] dark:border-[#215736] dark:bg-[#133822] dark:text-[#78d69f]">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>{recalcMsg}</span>
         </div>
       )}
 
       {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
+        <div className="flex items-center gap-2 rounded border border-[#f8c4c4] bg-[#fdeded] px-3.5 py-2 text-xs text-[#a82424] dark:border-[#5e2626] dark:bg-[#3d1818] dark:text-[#f38d8d]">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
       )}
 
-      {/* Mobile: tap-to-open cards (table needs too much width on phones) */}
-      <div className="space-y-2.5 md:hidden">
-        {loading && (
-          <Card>
-            <CardContent className="flex items-center gap-2 pt-5 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading submissions…
-            </CardContent>
-          </Card>
-        )}
-        {!loading && filtered.length === 0 && (
-          <Card>
-            <CardContent className="pt-5 text-sm text-muted-foreground">No students match the current filters.</CardContent>
-          </Card>
-        )}
-        {filtered.map((s) => (
-          <Card
-            key={s.id}
-            className="glass-hover cursor-pointer"
-            onClick={() => setSelectedId(s.id)}
+      {/* 2. Important Action Buttons Bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant={activeSection === "STUDENTS" ? "default" : "outline"}
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setStatusFilter("ALL");
+          }}
+          className="text-xs"
+        >
+          View Students
+        </Button>
+
+        <Button
+          size="sm"
+          variant={activeSection === "SCORES" ? "default" : "outline"}
+          onClick={() => {
+            setActiveSection("SCORES");
+            setStatusFilter("PENDING");
+          }}
+          className="text-xs"
+        >
+          Review Scores {stats.pending > 0 && `(${stats.pending})`}
+        </Button>
+
+        <Button
+          size="sm"
+          variant={activeSection === "MATRIX" ? "default" : "outline"}
+          onClick={() => setActiveSection("MATRIX")}
+          className="text-xs"
+        >
+          Manage Matrix
+        </Button>
+
+        <Button
+          size="sm"
+          variant={activeSection === "REPORTS" ? "default" : "outline"}
+          onClick={() => {
+            setActiveSection("REPORTS");
+          }}
+          className="text-xs"
+        >
+          View Reports
+        </Button>
+      </div>
+
+      {/* 3. Overview Strip — Key Administrative Information */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
+        <div className="px-2">
+          <span className="text-[11px] font-medium text-[#5c6470] dark:text-[#94a3b8]">
+            Registered Students
+          </span>
+          <div className="mt-0.5 text-lg font-bold text-[#1c2024] dark:text-white">
+            {stats.total}
+          </div>
+        </div>
+        <div className="px-2 border-l border-[#e2ded5] dark:border-[#262f3c]">
+          <span className="text-[11px] font-medium text-[#5c6470] dark:text-[#94a3b8]">
+            Pending Reviews
+          </span>
+          <div className="mt-0.5 text-lg font-bold text-[#92540d] dark:text-[#f3b55c]">
+            {stats.pending}
+          </div>
+        </div>
+        <div className="px-2 border-l border-[#e2ded5] dark:border-[#262f3c]">
+          <span className="text-[11px] font-medium text-[#5c6470] dark:text-[#94a3b8]">
+            Verified Students
+          </span>
+          <div className="mt-0.5 text-lg font-bold text-[#165b33] dark:text-[#78d69f]">
+            {stats.verified}
+          </div>
+        </div>
+        <div className="px-2 border-l border-[#e2ded5] dark:border-[#262f3c]">
+          <span className="text-[11px] font-medium text-[#5c6470] dark:text-[#94a3b8]">
+            Matrix Rules
+          </span>
+          <div className="mt-0.5 text-lg font-bold text-[#1c2024] dark:text-white">
+            13 Criteria (100 M)
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Action Sections (4 simple rectangular panels) */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Section: Students */}
+        <div className="rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
+          <div className="text-xs font-bold text-[#1c2024] dark:text-white">Students</div>
+          <p className="mt-0.5 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+            View registered students
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setActiveSection("STUDENTS");
+              setStatusFilter("ALL");
+            }}
+            className="mt-3 w-full justify-center text-xs h-7"
           >
-            <CardContent className="space-y-2 pt-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold tabular-nums text-gradient-gold">{s.rank ? `#${s.rank}` : "—"}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{s.fullName}</p>
-                  <p className="truncate font-mono text-[11px] text-muted-foreground">{s.registerNumber}</p>
+            View Students
+          </Button>
+        </div>
+
+        {/* Section: Placement Matrix */}
+        <div className="rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
+          <div className="text-xs font-bold text-[#1c2024] dark:text-white">Placement Matrix</div>
+          <p className="mt-0.5 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+            Manage matrix rules
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setActiveSection("MATRIX")}
+            className="mt-3 w-full justify-center text-xs h-7"
+          >
+            Manage Matrix Rules
+          </Button>
+        </div>
+
+        {/* Section: Scores */}
+        <div className="rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
+          <div className="text-xs font-bold text-[#1c2024] dark:text-white">Scores</div>
+          <p className="mt-0.5 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+            Review and update scores
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setActiveSection("SCORES");
+              setStatusFilter("PENDING");
+            }}
+            className="mt-3 w-full justify-center text-xs h-7"
+          >
+            Review Scores
+          </Button>
+        </div>
+
+        {/* Section: Reports */}
+        <div className="rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
+          <div className="text-xs font-bold text-[#1c2024] dark:text-white">Reports</div>
+          <p className="mt-0.5 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+            View placement reports
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportToCsv}
+            disabled={!students.length}
+            className="mt-3 w-full justify-center text-xs h-7"
+          >
+            View Reports (CSV)
+          </Button>
+        </div>
+      </div>
+
+      {/* 5. Section: Placement Matrix Rules (when MATRIX selected) */}
+      {activeSection === "MATRIX" && (
+        <div className="rounded-md border border-[#e2ded5] bg-white dark:border-[#262f3c] dark:bg-[#1b222c]">
+          <div className="flex items-center justify-between border-b border-[#e2ded5] p-4 dark:border-[#262f3c]">
+            <div>
+              <h2 className="text-sm font-bold text-[#1c2024] dark:text-white">
+                Official Placement Matrix Rules (100 Marks Total)
+              </h2>
+              <p className="text-xs text-[#5c6470] dark:text-[#94a3b8]">
+                SRM School of Computing Batches 2022–2026 &amp; 2023–2027 Evaluation Standard
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveSection("STUDENTS")}
+              className="text-xs h-7"
+            >
+              Back to Students
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="portal-table">
+              <thead>
+                <tr>
+                  <th className="w-12">#</th>
+                  <th>Metric Name</th>
+                  <th className="text-center w-24">Marks</th>
+                  <th>Evaluation Standard &amp; Criteria Split-Up</th>
+                </tr>
+              </thead>
+              <tbody>
+                {SRM_OFFICIAL_METRICS.map((m, idx) => (
+                  <tr key={m.id}>
+                    <td className="text-stone-400 font-medium">{idx + 1}</td>
+                    <td className="font-semibold text-stone-900 dark:text-white">{m.name}</td>
+                    <td className="text-center font-bold text-[#165b33] dark:text-[#78d69f]">
+                      {m.allottedMarks} M
+                    </td>
+                    <td className="text-stone-600 dark:text-stone-300">{m.splitUp}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Section: Reports (when REPORTS selected) */}
+      {activeSection === "REPORTS" && (
+        <div className="rounded-md border border-[#e2ded5] bg-white p-5 dark:border-[#262f3c] dark:bg-[#1b222c]">
+          <div className="flex items-center justify-between border-b border-[#e2ded5] pb-3 dark:border-[#262f3c]">
+            <div>
+              <h2 className="text-sm font-bold text-[#1c2024] dark:text-white">
+                Placement Reports &amp; Exports
+              </h2>
+              <p className="text-xs text-[#5c6470] dark:text-[#94a3b8]">
+                Generate cohort-wide spreadsheets for company shortlisting and coordinator audits.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveSection("STUDENTS")}
+              className="text-xs h-7"
+            >
+              Back to Students
+            </Button>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <div className="rounded border border-[#e2ded5] p-4 dark:border-[#262f3c]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-[#1c2024] dark:text-white">
+                    Full Cohort Matrix Score Sheet (CSV)
+                  </h3>
+                  <p className="mt-0.5 text-xs text-[#5c6470] dark:text-[#94a3b8]">
+                    Contains all registered candidate details, CGPA, official 13-criteria score breakdown, and verified placement rank.
+                  </p>
                 </div>
-                <Badge variant={s.status === "VERIFIED" ? "success" : "warning"}>{s.status}</Badge>
+                <Button
+                  size="sm"
+                  onClick={exportToCsv}
+                  disabled={!students.length}
+                  className="bg-[#165b33] text-xs font-medium text-white hover:bg-[#124929]"
+                >
+                  <Download className="mr-1 h-3.5 w-3.5" />
+                  Download CSV
+                </Button>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-[11px] text-muted-foreground">
-                <span>CGPA <b className="tnum text-foreground">{s.cgpa.toFixed(2)}</b></span>
-                <span>Docs <b className="tnum text-foreground">
-                  {(s.documents ?? []).filter((d) => d.status === "VERIFIED").length + (s.projectLinks ?? []).filter((l) => l.status === "VERIFIED").length}
-                  /{(s.documents?.length ?? 0) + (s.projectLinks?.length ?? 0)}</b></span>
-                <span>Score <b className="tnum text-foreground">{s.scores.total.toFixed(1)}</b></span>
-              </div>
-              <div className="space-y-1 text-xs">
-                <SummaryCell s={s} platform="GITHUB" />
-                <SummaryCell s={s} platform="LEETCODE" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Table (md+ — has room for the full column set) */}
-      <div className="glass hidden overflow-x-auto rounded-2xl scrollbar-thin md:block">
-        <table className="w-full min-w-[1080px] text-sm">
-          <thead className="text-left text-xs uppercase tracking-[0.07em] text-muted-foreground/90">
-            <tr>
-              <Th onClick={() => toggleSort("rank")}>Rank</Th>
-              <Th onClick={() => toggleSort("registerNumber")}>Reg. no.</Th>
-              <Th onClick={() => toggleSort("name")}>Name</Th>
-              <Th onClick={() => toggleSort("cgpa")}>CGPA</Th>
-              <Th>10th</Th>
-              <Th>12th</Th>
-              <Th>GitHub (scraped)</Th>
-              <Th>LeetCode (scraped)</Th>
-              <Th>Docs</Th>
-              <Th>Status</Th>
-              <Th onClick={() => toggleSort("totalScore")}>Score</Th>
-              <Th></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
-                  <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Loading submissions…
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
-                  No students match the current filters. Try{" "}
-                  <button className="text-primary underline" onClick={() => { setQuery(""); setStatusFilter("ALL"); setProfileFilter("ALL"); }}>
-                    clearing filters
-                  </button>
-                  .
-                </td>
-              </tr>
-            )}
-            {filtered.map((s) => (
-              <tr
-                key={s.id}
-                onClick={() => setSelectedId(s.id)}
-                className="cursor-pointer border-t border-border/60 transition-colors hover:bg-accent/40"
+      {/* 7. STUDENT TABLE (VISUAL FOCUS OF DASHBOARD) */}
+      {activeSection !== "MATRIX" && (
+        <div className="rounded-md border border-[#e2ded5] bg-white dark:border-[#262f3c] dark:bg-[#1b222c]">
+          {/* Table Header with Search & Filter controls */}
+          <div className="flex flex-col gap-3 p-4 border-b border-[#e2ded5] dark:border-[#262f3c] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-[#1c2024] dark:text-white">
+                {activeSection === "SCORES" ? "Pending Reviews" : "All Registered Students"}
+              </h2>
+              <span className="rounded bg-[#f0ece4] px-2 py-0.5 text-xs font-semibold text-[#474f5a] dark:bg-[#232b36] dark:text-[#cbd5e1]">
+                {filtered.length}
+              </span>
+            </div>
+
+            {/* Clean, straightforward Search & Filter Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-[200px]">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#88909c]" />
+                <Input
+                  placeholder="Search student or register no..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2.5 text-xs text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
               >
-                <td className="px-3 py-2.5 font-semibold tabular-nums">
-                  {s.rank ? (
-                    s.rank === 1 ? (
-                      <span className="text-gradient-gold text-base font-bold drop-shadow-[0_0_10px_hsl(45_100%_60%/0.5)]">#1</span>
-                    ) : s.rank === 2 ? (
-                      <span className="text-[hsl(210_15%_80%)]">#2</span>
-                    ) : s.rank === 3 ? (
-                      <span className="text-[hsl(30_60%_62%)]">#3</span>
-                    ) : (
-                      `#${s.rank}`
-                    )
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="px-3 py-2.5 font-mono text-xs">{s.registerNumber}</td>
-                <td className="px-3 py-2.5">
-                  <div className="font-medium">{s.fullName}</div>
-                  <div className="text-xs text-muted-foreground">{s.email}</div>
-                </td>
-                <td className="px-3 py-2.5 tabular-nums">{s.cgpa.toFixed(2)}</td>
-                <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{fmtPct(s.tenthPercent)}</td>
-                <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{fmtPct(s.twelfthPercent)}</td>
-                <td className="max-w-[220px] px-3 py-2.5"><SummaryCell s={s} platform="GITHUB" /></td>
-                <td className="max-w-[220px] px-3 py-2.5"><SummaryCell s={s} platform="LEETCODE" /></td>
-                <td className="px-3 py-2.5"><DocsCell s={s} /></td>
-                <td className="px-3 py-2.5">
-                  <Badge variant={s.status === "VERIFIED" ? "success" : "warning"}>{s.status}</Badge>
-                </td>
-                <td className="px-3 py-2.5">
-                  <span className="font-semibold tabular-nums">{s.scores.total.toFixed(1)}</span>
-                  <span className="text-xs text-muted-foreground">/100</span>
-                </td>
-                <td className="px-3 py-2.5 text-right">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    title="Re-scrape profiles"
-                    disabled={busyId === s.id}
-                    onClick={(e) => rescrape(s, e)}
-                  >
-                    {busyId === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                <option value="ALL">All Statuses</option>
+                <option value="PENDING">Pending Review</option>
+                <option value="VERIFIED">Verified Only</option>
+              </select>
 
-      <p className="text-xs text-muted-foreground">
-        Click a row to open the evaluation modal with live scraped profiles and the score panel. Scrapes refresh automatically while jobs run.
-      </p>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2.5 text-xs text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
+              >
+                <option value="rank">Sort by Rank</option>
+                <option value="totalScore">Sort by Matrix Score</option>
+                <option value="cgpa">Sort by CGPA</option>
+                <option value="name">Sort by Student Name</option>
+                <option value="registerNumber">Sort by Reg. Number</option>
+              </select>
+            </div>
+          </div>
 
+          {/* Clean Administrative Student Table */}
+          <div className="overflow-x-auto">
+            <table className="portal-table">
+              <thead>
+                <tr>
+                  <th className="w-16">Rank</th>
+                  <th>Register No.</th>
+                  <th>Student Name</th>
+                  <th>CGPA</th>
+                  <th>Status</th>
+                  <th className="text-right">Matrix Score</th>
+                  <th className="text-right w-44">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-[#5c6470]">
+                      <Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#165b33]" />
+                      Loading student records…
+                    </td>
+                  </tr>
+                )}
+                {!loading && filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-[#5c6470]">
+                      No students found matching your search.
+                    </td>
+                  </tr>
+                )}
+                {filtered.map((s) => (
+                  <tr key={s.id}>
+                    {/* Rank */}
+                    <td className="font-semibold text-[#165b33] dark:text-[#78d69f]">
+                      {s.rank ? `#${s.rank}` : "—"}
+                    </td>
+
+                    {/* Register Number */}
+                    <td className="font-mono font-medium text-[#1c2024] dark:text-[#f0ede6]">
+                      {s.registerNumber}
+                    </td>
+
+                    {/* Student Name */}
+                    <td>
+                      <div className="font-semibold text-[#1c2024] dark:text-white">
+                        {s.fullName}
+                      </div>
+                      <div className="text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+                        {s.email}
+                      </div>
+                    </td>
+
+                    {/* CGPA */}
+                    <td className="font-medium text-[#1c2024] dark:text-[#f0ede6]">
+                      {s.cgpa.toFixed(2)}
+                    </td>
+
+                    {/* Status */}
+                    <td>
+                      {s.status === "VERIFIED" ? (
+                        <Badge variant="success">Verified</Badge>
+                      ) : (
+                        <Badge variant="warning">Pending</Badge>
+                      )}
+                    </td>
+
+                    {/* Matrix Score */}
+                    <td className="text-right">
+                      <span className="font-bold text-[#1c2024] dark:text-white">
+                        {s.scores.total.toFixed(1)}
+                      </span>
+                      <span className="text-[11px] text-[#5c6470]"> / 100</span>
+                    </td>
+
+                    {/* Actions: Simple Text Buttons [ View ] and [ Edit Score ] */}
+                    <td className="text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2.5 text-xs"
+                          onClick={() => setSelectedId(s.id)}
+                        >
+                          View
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          className="h-7 px-2.5 text-xs bg-[#165b33] text-white hover:bg-[#124929]"
+                          onClick={() => setSelectedId(s.id)}
+                        >
+                          Edit Score
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title="Refresh live GitHub and LeetCode data"
+                          disabled={busyId === s.id}
+                          onClick={(e) => rescrape(s, e)}
+                          className="h-7 px-2 text-xs text-[#5c6470] hover:text-[#1c2024]"
+                        >
+                          {busyId === s.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-[#165b33]" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Student Audit & Scoring Modal */}
       {selectedId && (
         <StudentDetailModal
           studentId={selectedId}
@@ -413,19 +677,5 @@ export function Dashboard() {
         />
       )}
     </div>
-  );
-}
-
-function Th({ children, onClick }: { children?: React.ReactNode; onClick?: () => void }) {
-  return (
-    <th className="px-3 py-2.5 font-medium">
-      {onClick ? (
-        <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={onClick}>
-          {children} <ChevronsUpDown className="h-3 w-3 opacity-60" />
-        </button>
-      ) : (
-        children
-      )}
-    </th>
   );
 }

@@ -14,22 +14,24 @@ type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 const buttonVariants: Record<ButtonVariant, string> = {
   default:
-    "bg-gradient-to-b from-[hsl(260_95%_68%)] to-[hsl(255_85%_58%)] text-white shadow-[0_2px_12px_-2px_hsl(258_90%_60%/0.55),inset_0_1px_0_hsl(0_0%_100%/0.35)] hover:shadow-[0_6px_28px_-4px_hsl(258_95%_62%/0.65),inset_0_1px_0_hsl(0_0%_100%/0.35)] hover:brightness-[1.07] active:brightness-95",
-  secondary: "glass-inset text-secondary-foreground hover:bg-white/10",
+    "bg-[#165b33] text-white hover:bg-[#124929] shadow-sm dark:bg-[#20683f] dark:hover:bg-[#175231]",
+  secondary:
+    "border border-[#ded9ce] bg-[#f0ece4] text-[#1c2024] hover:bg-[#e6e1d6] dark:border-[#323d4c] dark:bg-[#232b36] dark:text-[#f0ede6] dark:hover:bg-[#2b3543]",
   outline:
-    "glass text-foreground/90 hover:brightness-[1.15] active:brightness-[0.97]",
-  ghost: "hover:bg-white/8 hover:text-foreground",
+    "border border-[#d8d3c7] bg-white text-[#1c2024] hover:bg-[#f7f5ef] dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6] dark:hover:bg-[#232b36]",
+  ghost:
+    "text-[#1c2024] hover:bg-[#f0ece4] dark:text-[#f0ede6] dark:hover:bg-[#232b36]",
   destructive:
-    "bg-gradient-to-b from-[hsl(352_85%_62%)] to-[hsl(350_80%_52%)] text-white shadow-[0_2px_12px_-2px_hsl(352_80%_55%/0.5),inset_0_1px_0_hsl(0_0%_100%/0.3)] hover:brightness-[1.07] active:brightness-95",
+    "bg-[#a82424] text-white hover:bg-[#8f1d1d] shadow-sm",
   success:
-    "bg-gradient-to-b from-[hsl(160_85%_46%)] to-[hsl(158_80%_38%)] text-white shadow-[0_2px_12px_-2px_hsl(160_84%_40%/0.5),inset_0_1px_0_hsl(0_0%_100%/0.3)] hover:brightness-[1.07] active:brightness-95",
+    "bg-[#165b33] text-white hover:bg-[#124929] shadow-sm",
 };
 
 const buttonSizes: Record<ButtonSize, string> = {
-  sm: "h-8 gap-1.5 rounded-[calc(var(--radius)-6px)] px-3 text-xs",
-  md: "h-9.5 px-4 text-sm",
-  lg: "h-11 rounded-[calc(var(--radius)-2px)] px-6 text-[15px]",
-  icon: "h-9 w-9 rounded-[calc(var(--radius)-6px)]",
+  sm: "h-8 gap-1.5 rounded-md px-3 text-xs",
+  md: "h-9 px-3.5 text-xs font-medium rounded-md",
+  lg: "h-10 rounded-md px-5 text-sm font-medium",
+  icon: "h-8 w-8 rounded-md",
 };
 
 export function Button({
@@ -44,7 +46,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex select-none items-center justify-center gap-2 rounded-[calc(var(--radius)-4px)] font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
+        "inline-flex select-none items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#165b33]/50 disabled:pointer-events-none disabled:opacity-50",
         buttonVariants[variant],
         buttonSizes[size],
         className
@@ -56,20 +58,21 @@ export function Button({
 
 /* -------------------------------- Input -------------------------------- */
 
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  function Input({ className, ...props }, ref) {
-    return (
-      <input
-        ref={ref}
-        className={cn(
-          "glass-inset flex h-9.5 w-full rounded-[calc(var(--radius)-6px)] border-0 px-3 py-1 text-sm text-foreground shadow-none outline-none transition duration-200 placeholder:text-muted-foreground/60 focus-visible:bg-white/[0.07] focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50",
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-);
+export const Input = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement>
+>(function Input({ className, ...props }, ref) {
+  return (
+    <input
+      ref={ref}
+      className={cn(
+        "flex h-9 w-full rounded-md border border-[#d8d3c7] bg-white px-3 py-1.5 text-xs text-[#1c2024] shadow-none outline-none transition-colors placeholder:text-[#88909c] focus:border-[#165b33] focus:ring-1 focus:ring-[#165b33] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]",
+        className
+      )}
+      {...props}
+    />
+  );
+});
 
 /* -------------------------------- Label -------------------------------- */
 
@@ -77,7 +80,7 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
   return (
     <label
       className={cn(
-        "text-[13px] font-medium tracking-[-0.01em] text-foreground/80",
+        "text-xs font-semibold text-[#1c2024] dark:text-[#f0ede6]",
         className
       )}
       {...props}
@@ -95,17 +98,18 @@ export function Badge({
   variant?: "default" | "secondary" | "outline" | "success" | "warning" | "destructive";
 }) {
   const variants = {
-    default: "bg-primary/15 text-[hsl(258_100%_82%)] ring-1 ring-inset ring-primary/35",
-    secondary: "glass-inset text-muted-foreground",
-    outline: "ring-1 ring-inset ring-white/15 text-foreground/90",
-    success: "bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-400/30",
-    warning: "bg-amber-500/15 text-amber-300 ring-1 ring-inset ring-amber-400/30",
-    destructive: "bg-rose-500/15 text-rose-300 ring-1 ring-inset ring-rose-400/30",
+    default: "bg-[#eaf4ed] text-[#165b33] border border-[#b8ddc4] dark:bg-[#143a24] dark:text-[#7fdca4] dark:border-[#215736]",
+    secondary: "bg-[#f0ece4] text-[#474f5a] border border-[#ded9ce] dark:bg-[#232b36] dark:text-[#cbd5e1] dark:border-[#333e4e]",
+    outline: "border border-[#d8d3c7] text-[#474f5a] dark:border-[#333e4e] dark:text-[#cbd5e1]",
+    success: "bg-[#eaf4ed] text-[#165b33] border border-[#b8ddc4] dark:bg-[#143a24] dark:text-[#7fdca4] dark:border-[#215736]",
+    warning: "bg-[#fef8ea] text-[#92540d] border border-[#f6e0ad] dark:bg-[#38280f] dark:text-[#f3b55c] dark:border-[#5c431a]",
+    destructive: "bg-[#fdf0f0] text-[#a82424] border border-[#f8c4c4] dark:bg-[#3d1818] dark:text-[#f38d8d] dark:border-[#5e2626]",
   } as const;
+
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-[0.01em]",
+        "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium tracking-tight",
         variants[variant],
         className
       )}
@@ -116,14 +120,13 @@ export function Badge({
 
 /* --------------------------------- Card --------------------------------- */
 
-/**
- * Glass panel. The element must be `relative` for the hairline gradient
- * border (::before) to position correctly.
- */
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("glass relative rounded-2xl text-card-foreground", className)}
+      className={cn(
+        "rounded-lg border border-[#e5e1d8] bg-white text-card-foreground shadow-sm dark:border-[#2a3341] dark:bg-[#1b222c]",
+        className
+      )}
       {...props}
     />
   );
@@ -136,14 +139,14 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn("font-semibold leading-none tracking-[-0.015em]", className)}
+      className={cn("text-sm font-bold text-[#1c2024] dark:text-white leading-tight", className)}
       {...props}
     />
   );
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("text-sm text-muted-foreground", className)} {...props} />;
+  return <p className={cn("text-xs text-[#5c6470] dark:text-[#94a3b8] leading-relaxed", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -162,12 +165,12 @@ export function EmptyState({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 py-12 text-center">
-      <span className="glass flex h-12 w-12 items-center justify-center rounded-2xl">
-        <Icon className="h-5 w-5 text-muted-foreground" />
+    <div className="flex flex-col items-center gap-2 py-10 text-center">
+      <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[#f0ece4] text-[#5c6470] dark:bg-[#232b36] dark:text-[#94a3b8]">
+        <Icon className="h-5 w-5" />
       </span>
-      <p className="font-medium">{title}</p>
-      {children ? <div className="text-sm text-muted-foreground">{children}</div> : null}
+      <p className="text-xs font-semibold text-[#1c2024] dark:text-white">{title}</p>
+      {children ? <div className="text-xs text-[#5c6470] dark:text-[#94a3b8]">{children}</div> : null}
     </div>
   );
 }

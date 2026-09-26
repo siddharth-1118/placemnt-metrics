@@ -1,37 +1,45 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LogIn } from "lucide-react";
+import { ArrowLeft, GraduationCap } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui";
 
 export const metadata: Metadata = {
-  title: "Sign in",
+  title: "Login · Placement Matrix Portal",
+  description: "Sign in to access your student placement score or coordinator dashboard.",
 };
 
 export default function LoginPage() {
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col justify-center px-3 py-10 sm:px-4 sm:py-24">
-      <Card className="glass-strong animate-rise rounded-3xl p-1">
-        <CardHeader className="p-6 pb-4">
-          <span className="glass-inset mb-3 flex h-11 w-11 items-center justify-center rounded-2xl">
-            <LogIn className="h-5 w-5 text-primary" />
-          </span>
-          <CardTitle className="text-xl tracking-[-0.02em]">Welcome back</CardTitle>
-          <CardDescription>
-            Students see their own submission; assigned coordinators open the ranking dashboard.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-6 pt-0">
-          <LoginForm />
-          <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
-            Haven&apos;t submitted yet?{" "}
-            <Link href="/student/submit" className="font-medium text-primary hover:underline">
-              Submit your profile first
-            </Link>{" "}
-            and set a password at the bottom of the form.
+    <div className="mx-auto flex min-h-[calc(100vh-14rem)] max-w-md flex-col justify-center px-4 py-12 sm:px-6">
+      {/* Simple Back to Home link */}
+      <div className="mb-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5c6470] hover:text-[#1c2024] dark:text-[#94a3b8] dark:hover:text-white"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          <span>Back to Home</span>
+        </Link>
+      </div>
+
+      {/* Main Login Card */}
+      <div className="rounded-md border border-[#ded9ce] bg-white p-6 shadow-sm dark:border-[#262f3c] dark:bg-[#1b222c] sm:p-7">
+        <div className="text-center">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded bg-[#165b33] text-white">
+            <GraduationCap className="h-5 w-5" />
+          </div>
+          <h1 className="text-lg font-bold tracking-tight text-[#1c2024] dark:text-white">
+            Placement Matrix Portal
+          </h1>
+          <p className="mt-1 text-xs text-[#5c6470] dark:text-[#94a3b8]">
+            Login to continue
           </p>
-        </CardContent>
-      </Card>
+        </div>
+
+        <div className="mt-6">
+          <LoginForm />
+        </div>
+      </div>
     </div>
   );
 }

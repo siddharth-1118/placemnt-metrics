@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileText, Loader2, Trash2, Upload } from "lucide-react";
+import { FileText, Loader2, Trash2, Upload, CheckCircle2, Clock, XCircle, FileCheck } from "lucide-react";
 import { Badge, Button, Card, CardContent, Input, Label } from "@/components/ui";
-import { DOC_CATEGORIES, UPLOAD_MAX_BYTES, docCategoryLabel } from "@/lib/categories";
+import { DOC_CATEGORIES, UPLOAD_MAX_BYTES } from "@/lib/categories";
 import type { DocumentDto } from "@/lib/types";
 
 function fmtSize(bytes: number): string {
@@ -13,20 +13,37 @@ function fmtSize(bytes: number): string {
 }
 
 function statusBadge(status: DocumentDto["status"]) {
-  if (status === "VERIFIED") return <Badge variant="success">Verified</Badge>;
-  if (status === "REJECTED") return <Badge variant="destructive">Rejected</Badge>;
-  return <Badge variant="warning">Pending review</Badge>;
+  if (status === "VERIFIED")
+    return (
+      <Badge variant="success" className="gap-1">
+        <CheckCircle2 className="h-3 w-3" /> Verified
+      </Badge>
+    );
+  if (status === "REJECTED")
+    return (
+      <Badge variant="destructive" className="gap-1">
+        <XCircle className="h-3 w-3" /> Rejected
+      </Badge>
+    );
+  return (
+    <Badge variant="warning" className="gap-1">
+      <Clock className="h-3 w-3" /> Pending
+    </Badge>
+  );
 }
 
-/**
- * Document upload + management for the signed-in user's own submission.
- * One upload block per category; uploaded files are listed with their
- * verification status and can be removed while still unverified.
- */
-export function DocumentUploader({ onChanged }: { onChanged?: () => void }) {
-  const [docs, setDocs] = useState<DocumentDto[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [uploading, setUploading] = useState<string | null>(null); // category key
+export function DocumentUploader({
+  initialDocs,
+  onChanged,
+}: {
+  studentId?: string;
+  uploadToken?: string;
+  initialDocs?: DocumentDto[];
+  onChanged?: () => void;
+}) {
+  const [docs, setDocs] = useState<DocumentDto[]>(initialDocs ?? []);
+  const [loaded, setLoaded] = useState(true);
+  const [uploading, setUploading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<Record<string, string>>({});
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -45,21 +62,15 @@ export function DocumentUploader({ onChanged }: { onChanged?: () => void }) {
     }
   }
 
-  if (!loaded) {
-    load().then(() => setLoaded(true));
-    // Render nothing meaningful until the first fetch resolves.
-    if (!loaded) return <Card><CardContent className="pt-5 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Loading your documents…</CardContent></Card>;
-  }
-
   async function upload(category: string) {
     const input = inputRefs.current[category];
     const file = input?.files?.[0];
     if (!file) {
-      setError("Choose a file first");
+      setError("Please select a file to upload first");
       return;
     }
     if (file.size > UPLOAD_MAX_BYTES) {
-      setError(`"${file.name}" is larger than 10 MB`);
+      setError(`"${file.name}" exceeds the maximum allowed size of 10 MB`);
       return;
     }
     setError(null);
@@ -86,7 +97,9 @@ export function DocumentUploader({ onChanged }: { onChanged?: () => void }) {
   async function remove(id: string) {
     setError(null);
     try {
-      const res = await fetch(`/api/documents?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const res = await fetch(`/api/documents?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error ?? "Delete failed");
       setDocs((d) => d.filter((x) => x.id !== id));
@@ -105,42 +118,70 @@ export function DocumentUploader({ onChanged }: { onChanged?: () => void }) {
 
   return (
     <div className="space-y-4">
+      <div>
+        <h3 className="text-sm font-bold text-[#1c2024] dark:text-white">
+          Document Proof Uploads
+        </h3>
+        <p className="mt-0.5 text-xs text-[#5c6470] dark:text-[#94a3b8]">
+          Upload marksheets, certificates, and internship proof for coordinator verification.
+        </p>
+      </div>
+
       {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+        <div className="rounded border border-[#f8c4c4] bg-[#fdeded] p-2.5 text-xs text-[#a82424] dark:border-[#5e2626] dark:bg-[#3d1818] dark:text-[#f38d8d]">
           {error}
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="space-y-3">
         {DOC_CATEGORIES.map((cat) => {
           const mine = byCategory.get(cat.key) ?? [];
           return (
-            <Card key={cat.key}>
-              <CardContent className="space-y-3 pt-5">
-                <div>
-                  <Label className="text-sm">{cat.label}</Label>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{cat.hint}</p>
+            <Card
+              key={cat.key}
+              className="rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]"
+            >
+              <CardContent className="space-y-3 p-0">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <Label className="text-xs font-bold text-[#1c2024] dark:text-white">{cat.label}</Label>
+                    <p className="mt-0.5 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">{cat.hint}</p>
+                  </div>
+                  <span className="rounded border border-[#ded9ce] bg-[#faf8f5] px-2 py-0.5 font-mono text-[10px] text-[#5c6470] dark:border-[#323d4c] dark:bg-[#161c24] dark:text-[#94a3b8]">
+                    {mine.length} uploaded
+                  </span>
                 </div>
 
                 {mine.length > 0 && (
                   <ul className="space-y-1.5">
                     {mine.map((d) => (
-                      <li key={d.id} className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm">
-                        <FileText className="h-4 w-4 shrink-0 text-primary" />
+                      <li
+                        key={d.id}
+                        className="flex items-center gap-2 rounded border border-[#e2ded5] bg-[#faf8f5] p-2 text-xs dark:border-[#262f3c] dark:bg-[#161c24]"
+                      >
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-[#165b33] dark:text-[#78d69f]" />
                         <a
                           href={d.fileUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="min-w-0 flex-1 truncate hover:underline"
+                          className="min-w-0 flex-1 truncate font-medium text-[#1c2024] hover:underline dark:text-white"
                           title={d.fileName}
                         >
                           {d.note || d.fileName}
                         </a>
-                        <span className="shrink-0 text-[11px] text-muted-foreground">{fmtSize(d.sizeBytes)}</span>
+                        <span className="shrink-0 font-mono text-[10px] text-[#5c6470] dark:text-[#94a3b8]">
+                          {fmtSize(d.sizeBytes)}
+                        </span>
                         {statusBadge(d.status)}
                         {d.status !== "VERIFIED" && (
-                          <Button variant="ghost" size="icon" className="h-6 w-6" aria-label="Remove" onClick={() => remove(d.id)}>
-                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-[#5c6470] hover:text-[#a82424]"
+                            aria-label="Remove"
+                            onClick={() => remove(d.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
                           </Button>
                         )}
                       </li>
@@ -148,22 +189,34 @@ export function DocumentUploader({ onChanged }: { onChanged?: () => void }) {
                   </ul>
                 )}
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 border-t border-[#e2ded5] pt-2.5 dark:border-[#262f3c]">
                   <Input
-                    ref={(el) => { inputRefs.current[cat.key] = el; }}
+                    ref={(el) => {
+                      inputRefs.current[cat.key] = el;
+                    }}
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
-                    className="h-9 max-w-[240px] cursor-pointer text-xs"
+                    className="h-8 max-w-[200px] cursor-pointer text-xs file:mr-2 file:rounded file:border-0 file:bg-[#f0ece4] file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#1c2024] dark:file:bg-[#232b36] dark:file:text-white"
                   />
                   <Input
-                    placeholder="Caption (optional)"
-                    className="h-9 max-w-[180px] text-xs"
+                    placeholder="Caption (e.g. Sem 4 Marksheet)"
+                    className="h-8 max-w-[170px] text-xs"
                     value={note[cat.key] ?? ""}
                     onChange={(e) => setNote((n) => ({ ...n, [cat.key]: e.target.value }))}
                   />
-                  <Button type="button" size="sm" variant="outline" disabled={uploading === cat.key} onClick={() => upload(cat.key)}>
-                    {uploading === cat.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                    Upload
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={uploading === cat.key}
+                    onClick={() => upload(cat.key)}
+                    className="h-8 gap-1 bg-[#165b33] px-3 text-xs font-medium text-white hover:bg-[#124929]"
+                  >
+                    {uploading === cat.key ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Upload className="h-3 w-3" />
+                    )}
+                    <span>Upload</span>
                   </Button>
                 </div>
               </CardContent>
@@ -171,40 +224,6 @@ export function DocumentUploader({ onChanged }: { onChanged?: () => void }) {
           );
         })}
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        PDF, JPG, PNG or WEBP · up to 10 MB per file. Coordinators verify each document; you can
-        remove files until they are verified. {docCategoryLabel("SHL")} uploads are mandatory for
-        SHL participants only.
-      </p>
     </div>
-  );
-}
-
-/** Read-only list of a student's documents (coordinator view / own portal). */
-export function DocumentList({
-  documents,
-  showStatus = true,
-}: {
-  documents: DocumentDto[];
-  showStatus?: boolean;
-}) {
-  if (documents.length === 0) {
-    return <p className="text-sm text-muted-foreground">No documents uploaded yet.</p>;
-  }
-  return (
-    <ul className="space-y-1.5">
-      {documents.map((d) => (
-        <li key={d.id} className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-          <FileText className="h-4 w-4 shrink-0 text-primary" />
-          <a href={d.fileUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline" title={d.fileName}>
-            {d.note || d.fileName}
-          </a>
-          <span className="shrink-0 text-xs text-muted-foreground">{docCategoryLabel(d.category)}</span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">{fmtSize(d.sizeBytes)}</span>
-          {showStatus && statusBadge(d.status)}
-        </li>
-      ))}
-    </ul>
   );
 }
