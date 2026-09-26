@@ -49,6 +49,7 @@ export function Dashboard({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<ActiveSection>("STUDENTS");
 
   const load = useCallback(async () => {
@@ -95,62 +96,34 @@ export function Dashboard({
     }
   }
 
-  function exportToCsv() {
-    if (!students.length) return;
-    const headers = [
-      "Rank",
-      "Register Number",
-      "Full Name",
-      "Email",
-      "CGPA",
-      "Academic Score (10)",
-      "GitHub Score (15)",
-      "Coding Score (10)",
-      "Internship Score (10)",
-      "Certifications Score (15)",
-      "Projects Score (5)",
-      "Full-stack Score (5)",
-      "Hackathons Score (10)",
-      "In-house Score (8)",
-      "Membership Score (2)",
-      "SHL Score (10)",
-      "Matrix Score (100)",
-      "Status",
-    ];
-
-    const rows = students.map((s) => [
-      s.rank ?? "—",
-      `"${s.registerNumber}"`,
-      `"${s.fullName}"`,
-      `"${s.email}"`,
-      s.cgpa,
-      s.scores.academic,
-      s.scores.github,
-      s.scores.coding,
-      s.scores.internship,
-      s.scores.certifications,
-      s.scores.projects,
-      s.scores.fullstack,
-      s.scores.hackathons,
-      s.scores.inhouse,
-      s.scores.membership,
-      s.scores.shl,
-      s.scores.total,
-      s.status,
-    ]);
-
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `SRM_Placement_Matrix_Cohort_Report_${new Date().toISOString().slice(0, 10)}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Excel report is generated server-side (real .xlsx) and access-checked:
+  // coordinators/admins only, scoped to the viewer's rubric sections.
+  async function exportToCsv() {
+    setExportBusy(true);
+    try {
+      const res = await fetch("/api/students/export", { cache: "no-store" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `SRM_Placement_Matrix_${new Date().toISOString().slice(0, 10)}.xlsx`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError((err as Error).message);
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      setExportBusy(false);
+    }
   }
 
   const filtered = useMemo(() => {
@@ -275,11 +248,15 @@ export function Dashboard({
           <Button
             size="sm"
             onClick={exportToCsv}
-            disabled={!students.length}
+            disabled={!students.length || exportBusy}
             className="h-8 bg-[#165b33] text-xs font-medium text-white hover:bg-[#124929]"
           >
-            <Download className="mr-1 h-3 w-3" />
-            <span>Export CSV Report</span>
+            {exportBusy ? (
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            ) : (
+              <Download className="mr-1 h-3 w-3" />
+            )}
+            <span>Export Excel Report</span>
           </Button>
         </div>
       </div>
@@ -447,10 +424,10 @@ export function Dashboard({
             variant="outline"
             size="sm"
             onClick={exportToCsv}
-            disabled={!students.length}
+            disabled={!students.length || exportBusy}
             className="mt-3 w-full justify-center text-xs h-7"
           >
-            View Reports (CSV)
+            View Reports (Excel)
           </Button>
         </div>
       </div>
@@ -531,7 +508,7 @@ export function Dashboard({
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-xs font-bold text-[#1c2024] dark:text-white">
-                    Full Cohort Matrix Score Sheet (CSV)
+                    Full Cohort Matrix Score Sheet (Excel)
                   </h3>
                   <p className="mt-0.5 text-xs text-[#5c6470] dark:text-[#94a3b8]">
                     Contains all registered candidate details, CGPA, official 13-criteria score breakdown, and verified placement rank.
@@ -540,11 +517,15 @@ export function Dashboard({
                 <Button
                   size="sm"
                   onClick={exportToCsv}
-                  disabled={!students.length}
+                  disabled={!students.length || exportBusy}
                   className="bg-[#165b33] text-xs font-medium text-white hover:bg-[#124929]"
                 >
-                  <Download className="mr-1 h-3.5 w-3.5" />
-                  Download CSV
+                  {exportBusy ? (
+                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="mr-1 h-3.5 w-3.5" />
+                  )}
+                  Download Excel
                 </Button>
               </div>
             </div>
