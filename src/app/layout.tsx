@@ -21,7 +21,16 @@ const NAV = [
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const user = await getSessionUser();
+  // Degrade gracefully: a session read can only fail when the database is
+  // unreachable or not yet migrated (missing permission columns). Throwing
+  // here would take down EVERY route — including /login, which the user needs
+  // to reach — so render signed-out chrome instead.
+  let user: Awaited<ReturnType<typeof getSessionUser>> = null;
+  try {
+    user = await getSessionUser();
+  } catch {
+    user = null;
+  }
   return (
     <html lang="en">
       <body className="flex min-h-screen flex-col">
