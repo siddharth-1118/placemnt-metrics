@@ -45,6 +45,55 @@ export function isSupabaseStorage(): boolean {
   return driver() === "supabase";
 }
 
+/**
+ * Create a short-lived signed upload URL so the BROWSER can push the file
+ * bytes straight to Supabase Storage. Serverless platforms cap request
+ * bodies (~4.5 MB on Vercel), so large uploads through our API die with a
+ * network error before the route even runs — direct uploads bypass that
+ * entirely. Returns null when the disk driver is active (local dev keeps
+ * the multipart flow).
+ */
+export async function createSignedDocumentUpload(
+  studentId: string,
+  documentId: string
+): Promise<{ signedUrl: string } | null> {
+  if (driver() !== "supabase") return null;
+  const client = await supabase();
+  if (!client) return null;
+  await ensureBucket();
+  const key = `${studentId}/${documentId}`;
+  const { data, error } = await client.storage
+    .from(DOCUMENT_BUCKET)
+    .createSignedUploadUrl(key, { upsert: true });
+  if (error || !data) {
+    throw new Error(`Could not create an upload link: ${error?.message ?? "unknown error"}`);
+  }
+  return { signedUrl: data.signedUrl };
+}
+
+/** True when the object for this document actually exists in storage. */
+export async function documentObjectExists(
+  studentId: string,
+  documentId: string
+): Promise<boolean> {
+  if (driver() !== "supabase") {
+    try {
+      const { promises: fs } = await import("node:fs");
+      const path = await import("node:path");
+      await fs.access(path.join(process.cwd(), "uploads", studentId, documentId));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  const client = await supabase();
+  if (!client) return false;
+  const { data } = await client.storage
+    .from(DOCUMENT_BUCKET)
+    .list(studentId, { search: documentId, limit: 1 });
+  return (data ?? []).some((o) => o.name === documentId);
+}
+
 /** Ensure the bucket exists (idempotent, called before the first upload). */
 async function ensureBucket(): Promise<void> {
   const client = await supabase();

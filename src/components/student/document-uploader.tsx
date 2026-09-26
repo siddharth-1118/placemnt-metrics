@@ -105,19 +105,53 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
     setError(null);
     setUploading(category);
     try {
-      const fd = new FormData();
-      fd.set("file", file);
-      fd.set("category", category);
-      if (note[category]?.trim()) fd.set("note", note[category].trim());
-      const res = await fetch("/api/documents", { method: "POST", body: fd });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error ?? "Upload failed");
+      // Preferred flow: metadata handshake only, then the browser pushes the
+      // file bytes STRAIGHT to Supabase Storage via a signed URL. Large files
+      // never pass through our server, which caps request bodies (~4.5 MB) —
+      // pushing them through caused "Failed to fetch" on every bigger upload.
+      const handshake = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category,
+          note: note[category]?.trim() || undefined,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type || "application/octet-stream",
+        }),
+      });
+      const hb = await handshake.json();
+      if (!handshake.ok) throw new Error(hb?.error ?? "Upload failed");
+
+      if (hb.upload === "direct" && hb.signedUrl) {
+        // File bytes go browser → Supabase directly.
+        const put = await fetch(hb.signedUrl, {
+          method: "PUT",
+          body: file,
+          headers: { "x-upsert": "true" },
+        });
+        if (!put.ok) throw new Error(`Upload failed (storage responded ${put.status})`);
+      } else {
+        // Fallback (local disk driver): classic multipart through the server.
+        const fd = new FormData();
+        fd.set("file", file);
+        fd.set("category", category);
+        if (note[category]?.trim()) fd.set("note", note[category].trim());
+        const res = await fetch("/api/documents", { method: "POST", body: fd });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body?.error ?? "Upload failed");
+      }
       input.value = "";
       setNote((n) => ({ ...n, [category]: "" }));
       await load();
       onChanged?.();
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message;
+      setError(
+        msg === "Failed to fetch"
+          ? "Network error during upload — check your connection and try again."
+          : msg
+      );
     } finally {
       setUploading(null);
     }

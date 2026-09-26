@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
 import { docToDto } from "@/lib/dto";
-import { putDocument, deleteDocument } from "@/lib/storage";
+import { putDocument, deleteDocument, createSignedDocumentUpload } from "@/lib/storage";
 import { notify } from "@/lib/notify";
 import {
   DOC_CATEGORY_KEYS,
@@ -13,16 +13,49 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function validateCategory(category: string): NextResponse | null {
+  if (!DOC_CATEGORY_KEYS.includes(category)) {
+    return NextResponse.json({ error: "Choose a valid document category" }, { status: 422 });
+  }
+  return null;
+}
+
+function validateMime(mime: string): NextResponse | null {
+  if (!UPLOAD_MIME_TYPES.includes(mime as (typeof UPLOAD_MIME_TYPES)[number])) {
+    return NextResponse.json({ error: "Only PDF, JPG, PNG or WEBP files are accepted" }, { status: 415 });
+  }
+  return null;
+}
+
+function validateSize(size: number): NextResponse | null {
+  if (!Number.isFinite(size) || size <= 0) {
+    return NextResponse.json({ error: "Choose a file to upload" }, { status: 422 });
+  }
+  if (size > UPLOAD_MAX_BYTES) {
+    return NextResponse.json({ error: "File is larger than 10 MB" }, { status: 413 });
+  }
+  return null;
+}
+
 /**
- * POST /api/documents — multipart upload of one proof document.
+ * POST /api/documents
  *
- * Form fields:
- *   file      — the PDF/JPG/PNG/WEBP (≤ 10 MB)
- *   category  — one of DOC_CATEGORY_KEYS
- *   note      — optional caption
+ * Two modes, chosen by the request's content-type:
  *
- * Signed-in users upload to their OWN submission. This keeps student
- * identifiers out of the request entirely (no uploading to someone else).
+ * 1. JSON (preferred in production) — metadata handshake only. The server
+ *    validates + creates the Document row and returns a short-lived SIGNED
+ *    upload URL; the BROWSER then pushes the file bytes straight to Supabase
+ *    Storage. Serverless platforms cap request bodies (~4.5 MB on Vercel),
+ *    so pushing bytes through this function made any larger upload die with
+ *    a raw network error ("Failed to fetch") before this route even ran.
+ *    Response: { upload: "direct", documentId, signedUrl, document }.
+ *
+ * 2. multipart (local disk driver / fallback) — the original flow: the file
+ *    arrives in the form body and is written server-side.
+ *    Response: { document }.
+ *
+ * Both keep student identifiers out of the request (no uploading to someone
+ * else) — signed-in users always write to their OWN submission.
  */
 export async function POST(req: Request) {
   const user = await getSessionUser();
@@ -49,6 +82,72 @@ export async function POST(req: Request) {
     );
   }
 
+  const contentType = req.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return signedUploadHandshake(req, student.id);
+  }
+  return multipartUpload(req, student.id);
+}
+
+/** Mode 1: validate metadata, create the row, hand back a signed upload URL. */
+async function signedUploadHandshake(req: Request, studentId: string) {
+  let body: { category?: unknown; note?: unknown; fileName?: unknown; fileSize?: unknown; fileType?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Expected a JSON body" }, { status: 400 });
+  }
+
+  const category = String(body.category ?? "");
+  const invalid = validateCategory(category);
+  if (invalid) return invalid;
+
+  const mime = String(body.fileType ?? "application/octet-stream");
+  const invalidMime = validateMime(mime);
+  if (invalidMime) return invalidMime;
+
+  const size = Number(body.fileSize ?? 0);
+  const invalidSize = validateSize(size);
+  if (invalidSize) return invalidSize;
+
+  const noteRaw = typeof body.note === "string" ? body.note : "";
+  const note = noteRaw.trim() ? noteRaw.trim().slice(0, 300) : null;
+  const fileName = String(body.fileName ?? "document").slice(0, 200);
+
+  // Create the row first — its id is the storage key. Rolled back on failure
+  // so no Document ever exists without a backing file.
+  const docId = (
+    await prisma.document.create({
+      data: { studentId, category, fileName, mimeType: mime, sizeBytes: size, note },
+    })
+  ).id;
+
+  try {
+    const signed = await createSignedDocumentUpload(studentId, docId);
+    if (!signed) {
+      // Disk driver (local dev): no signed URLs — tell the client to fall
+      // back to the multipart flow.
+      await prisma.document.delete({ where: { id: docId } }).catch(() => undefined);
+      return NextResponse.json({ upload: "multipart" });
+    }
+    const doc = await prisma.document.findUnique({ where: { id: docId } });
+    return NextResponse.json({
+      upload: "direct",
+      documentId: docId,
+      signedUrl: signed.signedUrl,
+      document: doc ? docToDto(doc) : null,
+    });
+  } catch (err) {
+    await prisma.document.delete({ where: { id: docId } }).catch(() => undefined);
+    return NextResponse.json(
+      { error: `Could not create an upload link: ${(err as Error).message}` },
+      { status: 500 }
+    );
+  }
+}
+
+/** Mode 2: classic multipart upload (file bytes through the server). */
+async function multipartUpload(req: Request, studentId: string) {
   let form: FormData;
   try {
     form = await req.formData();
@@ -57,9 +156,8 @@ export async function POST(req: Request) {
   }
 
   const category = String(form.get("category") ?? "");
-  if (!DOC_CATEGORY_KEYS.includes(category)) {
-    return NextResponse.json({ error: "Choose a valid document category" }, { status: 422 });
-  }
+  const invalid = validateCategory(category);
+  if (invalid) return invalid;
 
   const noteRaw = form.get("note");
   const note = typeof noteRaw === "string" && noteRaw.trim() ? noteRaw.trim().slice(0, 300) : null;
@@ -68,13 +166,12 @@ export async function POST(req: Request) {
   if (!(file instanceof File) || file.size === 0) {
     return NextResponse.json({ error: "Choose a file to upload" }, { status: 422 });
   }
-  if (file.size > UPLOAD_MAX_BYTES) {
-    return NextResponse.json({ error: "File is larger than 10 MB" }, { status: 413 });
-  }
+  const invalidSize = validateSize(file.size);
+  if (invalidSize) return invalidSize;
+
   const mime = file.type || "application/octet-stream";
-  if (!UPLOAD_MIME_TYPES.includes(mime as (typeof UPLOAD_MIME_TYPES)[number])) {
-    return NextResponse.json({ error: "Only PDF, JPG, PNG or WEBP files are accepted" }, { status: 415 });
-  }
+  const invalidMime = validateMime(mime);
+  if (invalidMime) return invalidMime;
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -84,11 +181,11 @@ export async function POST(req: Request) {
   // as the storage key, so the row is created first and rolled back on failure.
   const docId = (
     await prisma.document.create({
-      data: { studentId: student.id, category, fileName: "pending", mimeType: mime, sizeBytes: file.size },
+      data: { studentId, category, fileName: "pending", mimeType: mime, sizeBytes: file.size },
     })
   ).id;
   try {
-    await putDocument(student.id, docId, buffer, mime);
+    await putDocument(studentId, docId, buffer, mime);
     const doc = await prisma.document.update({
       where: { id: docId },
       data: { fileName: file.name.slice(0, 200), note },
