@@ -149,6 +149,26 @@ export function canWriteScoreField(
   return accepted.some((s) => hasScope(user, s));
 }
 
+/**
+ * The rubric score field each section owns, 1:1 — used to strip out-of-scope
+ * SCORES from API responses so a scoped coordinator never receives another
+ * section's marks. Academic/GitHub/Coding are included even though they are
+ * auto-calculated: they still belong to their section's viewers.
+ */
+export const SCORE_FIELD_VIEW_SCOPE: Record<string, ScoreScope> = {
+  academic: "ACADEMIC",
+  github: "GITHUB",
+  coding: "CODING",
+  internship: "INTERNSHIP",
+  certifications: "CERTIFICATIONS",
+  projects: "PROJECTS",
+  fullstack: "FULLSTACK",
+  hackathons: "HACKATHONS",
+  inhouse: "INHOUSE",
+  membership: "MEMBERSHIP",
+  shl: "SHL",
+};
+
 /** True when a score field is shared by sections the user only partly holds. */
 export function isSharedScoreField(
   user: { isSuperAdmin: boolean; permissionScopes?: ScoreScope[] | null } | null | undefined,

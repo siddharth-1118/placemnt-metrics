@@ -7,7 +7,7 @@ import {
 import { Badge, Button, Card, CardContent, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
 import { fmtPct, timeAgo } from "@/lib/utils";
-import type { ScoreScope } from "@/lib/scopes";
+import { scopesAreFull, type ScoreScope } from "@/lib/scopes";
 import type { StudentDto } from "@/lib/types";
 
 type SortKey = "rank" | "totalScore" | "cgpa" | "name" | "registerNumber";
@@ -79,6 +79,13 @@ export function Dashboard({
   /** Rubric sections this coordinator may view & score; empty = all. */
   permissionScopes?: ScoreScope[];
 }) {
+  // The columns this viewer may see; the server already strips the data for
+  // out-of-scope fields, so this is purely visual (no empty columns).
+  const has = (s: ScoreScope) => isSuperAdmin || scopesAreFull(permissionScopes) || permissionScopes.includes(s);
+  const canSeeAcademic = has("ACADEMIC");
+  const canSeeGithub = has("GITHUB");
+  const canSeeCoding = has("CODING");
+  const colCount = 6 + (canSeeAcademic ? 3 : 0) + (canSeeGithub ? 1 : 0) + (canSeeCoding ? 1 : 0);
   const [students, setStudents] = useState<StudentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -328,15 +335,15 @@ export function Dashboard({
                 <Badge variant={s.status === "VERIFIED" ? "success" : "warning"}>{s.status}</Badge>
               </div>
               <div className="grid grid-cols-3 gap-2 text-[11px] text-muted-foreground">
-                <span>CGPA <b className="tnum text-foreground">{s.cgpa.toFixed(2)}</b></span>
+                {canSeeAcademic && <span>CGPA <b className="tnum text-foreground">{s.cgpa.toFixed(2)}</b></span>}
                 <span>Docs <b className="tnum text-foreground">
                   {(s.documents ?? []).filter((d) => d.status === "VERIFIED").length + (s.projectLinks ?? []).filter((l) => l.status === "VERIFIED").length}
                   /{(s.documents?.length ?? 0) + (s.projectLinks?.length ?? 0)}</b></span>
                 <span>Score <b className="tnum text-foreground">{s.scores.total.toFixed(1)}</b></span>
               </div>
               <div className="space-y-1 text-xs">
-                <SummaryCell s={s} platform="GITHUB" />
-                <SummaryCell s={s} platform="LEETCODE" />
+                {canSeeGithub && <SummaryCell s={s} platform="GITHUB" />}
+                {canSeeCoding && <SummaryCell s={s} platform="LEETCODE" />}
               </div>
             </CardContent>
           </Card>
@@ -351,11 +358,11 @@ export function Dashboard({
               <Th onClick={() => toggleSort("rank")}>Rank</Th>
               <Th onClick={() => toggleSort("registerNumber")}>Reg. no.</Th>
               <Th onClick={() => toggleSort("name")}>Name</Th>
-              <Th onClick={() => toggleSort("cgpa")}>CGPA</Th>
-              <Th>10th</Th>
-              <Th>12th</Th>
-              <Th>GitHub (scraped)</Th>
-              <Th>LeetCode (scraped)</Th>
+              {canSeeAcademic && <Th onClick={() => toggleSort("cgpa")}>CGPA</Th>}
+              {canSeeAcademic && <Th>10th</Th>}
+              {canSeeAcademic && <Th>12th</Th>}
+              {canSeeGithub && <Th>GitHub (scraped)</Th>}
+              {canSeeCoding && <Th>LeetCode (scraped)</Th>}
               <Th>Docs</Th>
               <Th>Status</Th>
               <Th onClick={() => toggleSort("totalScore")}>Score</Th>
@@ -365,14 +372,14 @@ export function Dashboard({
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={colCount} className="px-4 py-10 text-center text-muted-foreground">
                   <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Loading submissions…
                 </td>
               </tr>
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={colCount} className="px-4 py-10 text-center text-muted-foreground">
                   No students match the current filters. Try{" "}
                   <button className="text-primary underline" onClick={() => { setQuery(""); setStatusFilter("ALL"); setProfileFilter("ALL"); }}>
                     clearing filters
@@ -407,11 +414,11 @@ export function Dashboard({
                   <div className="font-medium">{s.fullName}</div>
                   <div className="text-xs text-muted-foreground">{s.email}</div>
                 </td>
-                <td className="px-3 py-2.5 tabular-nums">{s.cgpa.toFixed(2)}</td>
-                <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{fmtPct(s.tenthPercent)}</td>
-                <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{fmtPct(s.twelfthPercent)}</td>
-                <td className="max-w-[220px] px-3 py-2.5"><SummaryCell s={s} platform="GITHUB" /></td>
-                <td className="max-w-[220px] px-3 py-2.5"><SummaryCell s={s} platform="LEETCODE" /></td>
+                {canSeeAcademic && <td className="px-3 py-2.5 tabular-nums">{s.cgpa.toFixed(2)}</td>}
+                {canSeeAcademic && <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{fmtPct(s.tenthPercent)}</td>}
+                {canSeeAcademic && <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{fmtPct(s.twelfthPercent)}</td>}
+                {canSeeGithub && <td className="max-w-[220px] px-3 py-2.5"><SummaryCell s={s} platform="GITHUB" /></td>}
+                {canSeeCoding && <td className="max-w-[220px] px-3 py-2.5"><SummaryCell s={s} platform="LEETCODE" /></td>}
                 <td className="px-3 py-2.5"><DocsCell s={s} /></td>
                 <td className="px-3 py-2.5">
                   <Badge variant={s.status === "VERIFIED" ? "success" : "warning"}>{s.status}</Badge>

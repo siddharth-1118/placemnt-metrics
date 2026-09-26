@@ -9,6 +9,7 @@ import {
   isSharedScoreField,
   linkCategoryScope,
   parseScopes,
+  SCORE_FIELD_VIEW_SCOPE,
   scopesAreFull,
   serializeScopes,
   type ScoreScope,
@@ -146,10 +147,20 @@ export { canWriteScoreField, hasScope, isSharedScoreField, parseScopes, serializ
 export type { ScoreScope };
 
 /**
- * View a StudentDto-like object through the viewer's permission scopes:
- * documents/links outside the viewer's scopes are stripped server-side, so a
- * scoped coordinator never even receives the hidden evidence. Unrestricted
- * viewers (super admin, or an empty scope list) get everything unchanged.
+ * View a StudentDto-like object through the viewer's permission scopes.
+ * EVERYTHING outside the viewer's sections is stripped server-side, so a
+ * scoped coordinator never even receives the hidden data:
+ *
+ *  - documents/links outside their sections are removed item-by-item
+ *  - 10th/12th/CGPA marks vanish without the ACADEMIC scope
+ *  - the GitHub/LeetCode profile URLs and scrape payloads vanish without
+ *    the GITHUB / CODING scopes
+ *  - per-section scores outside their sections are zeroed (and the total is
+ *    re-summed from the visible sections only)
+ *  - generic achievement proof links are hidden from all scoped viewers
+ *
+ * Unrestricted viewers (super admin, or an empty scope list) get everything
+ * unchanged — the super admin always sees the full profile.
  */
 export function filterStudentDtoForUser<
   TStudent extends {
@@ -164,13 +175,46 @@ export function filterStudentDtoForUser<
   const scopes = user.permissionScopes ?? [];
   if (scopesAreFull(scopes)) return student; // unrestricted — return as-is
 
+  const s = student as unknown as {
+    tenthPercent: number;
+    twelfthPercent: number;
+    cgpa: number;
+    githubUrl: string | null;
+    leetcodeUrl: string | null;
+    proofUrls: unknown[];
+    scores?: Record<string, number>;
+    scrapes?: { platform: string }[];
+  };
+  const scoreOf = (field: string): number =>
+    hasScope(user, SCORE_FIELD_VIEW_SCOPE[field]) ? (s.scores?.[field] ?? 0) : 0;
+
+  const visibleScores: Record<string, number> = {};
+  for (const field of Object.keys(SCORE_FIELD_VIEW_SCOPE)) {
+    visibleScores[field] = scoreOf(field);
+  }
+  const total = Object.values(visibleScores).reduce((a, b) => a + b, 0);
+
   return {
     ...student,
+    // Academic marks — ACADEMIC scope only.
+    tenthPercent: hasScope(user, "ACADEMIC") ? s.tenthPercent : 0,
+    twelfthPercent: hasScope(user, "ACADEMIC") ? s.twelfthPercent : 0,
+    cgpa: hasScope(user, "ACADEMIC") ? s.cgpa : 0,
+    // Profile URLs — their own section's scope only.
+    githubUrl: hasScope(user, "GITHUB") ? s.githubUrl : null,
+    leetcodeUrl: hasScope(user, "CODING") ? s.leetcodeUrl : null,
+    // Generic achievement proof links belong to no single section.
+    proofUrls: [],
     documents: (student.documents ?? []).filter((d) =>
       hasScope(user, docCategoryScope(d.category))
     ),
     projectLinks: (student.projectLinks ?? []).filter((l) =>
       hasScope(user, linkCategoryScope(l.category))
+    ),
+    scores: { ...visibleScores, total } as unknown as TStudent,
+    // Scrape payloads — each platform behind its own scope.
+    scrapes: (s.scrapes ?? []).filter((sc) =>
+      hasScope(user, sc.platform === "GITHUB" ? "GITHUB" : "CODING")
     ),
   } as TStudent;
 }
