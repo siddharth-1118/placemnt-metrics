@@ -54,6 +54,8 @@ const SECTION_STYLE: Record<
   TENTH_MARKSHEET: { icon: Award, ring: "border-sky-500/25" },
   TWELFTH_MARKSHEET: { icon: Award, ring: "border-sky-500/25" },
   CGPA_MARKSHEET: { icon: Award, ring: "border-sky-500/25" },
+  SEM1_MARKSHEET: { icon: Award, ring: "border-sky-500/25" },
+  SEM2_MARKSHEET: { icon: Award, ring: "border-sky-500/25" },
   INTERNSHIP: { icon: BriefcaseIcon, ring: "border-violet-500/25" },
   SKILL_CERT: { icon: Globe, ring: "border-emerald-500/25" },
   COMPETITION: { icon: TrophyIcon, ring: "border-amber-500/25" },

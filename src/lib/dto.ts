@@ -66,6 +66,8 @@ export function toDto(
   tenthPercent: number;
   twelfthPercent: number;
   cgpa: number;
+  sgpaSem1: number;
+  sgpaSem2: number;
   githubUrl: string | null;
   leetcodeUrl: string | null;
   proofUrls: string;
@@ -122,6 +124,8 @@ export function toDto(
     tenthPercent: s.tenthPercent,
     twelfthPercent: s.twelfthPercent,
     cgpa: s.cgpa,
+    sgpaSem1: s.sgpaSem1,
+    sgpaSem2: s.sgpaSem2,
     githubUrl: s.githubUrl,
     leetcodeUrl: s.leetcodeUrl,
     proofUrls,

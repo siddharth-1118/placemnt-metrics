@@ -218,7 +218,12 @@ export default async function MySubmissionPage() {
           </div>
           <div>
             <span className="text-[#5c6470] dark:text-[#94a3b8]">Degree CGPA:</span>
-            <p className="font-semibold text-[#1c2024] dark:text-white">{student.cgpa.toFixed(2)} / 10</p>
+            <p className="font-semibold text-[#1c2024] dark:text-white">
+              {student.cgpa.toFixed(2)} / 10
+              <span className="ml-1 text-[10px] font-normal text-[#5c6470] dark:text-[#94a3b8]">
+                (S1 {student.sgpaSem1.toFixed(2)} + S2 {student.sgpaSem2.toFixed(2)}) ÷ 2
+              </span>
+            </p>
           </div>
           <div>
             <span className="text-[#5c6470] dark:text-[#94a3b8]">Faculty Advisor:</span>

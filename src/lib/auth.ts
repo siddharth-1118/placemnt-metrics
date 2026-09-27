@@ -152,7 +152,7 @@ export type { ScoreScope };
  * scoped coordinator never even receives the hidden data:
  *
  *  - documents/links outside their sections are removed item-by-item
- *  - 10th/12th/CGPA marks vanish without the ACADEMIC scope
+ *  - 10th/12th/CGPA/SGPA marks vanish without the ACADEMIC scope
  *  - the GitHub/LeetCode profile URLs and scrape payloads vanish without
  *    the GITHUB / CODING scopes
  *  - per-section scores outside their sections are zeroed (and the total is
@@ -179,6 +179,8 @@ export function filterStudentDtoForUser<
     tenthPercent: number;
     twelfthPercent: number;
     cgpa: number;
+    sgpaSem1: number;
+    sgpaSem2: number;
     githubUrl: string | null;
     leetcodeUrl: string | null;
     proofUrls: unknown[];
@@ -200,6 +202,8 @@ export function filterStudentDtoForUser<
     tenthPercent: hasScope(user, "ACADEMIC") ? s.tenthPercent : 0,
     twelfthPercent: hasScope(user, "ACADEMIC") ? s.twelfthPercent : 0,
     cgpa: hasScope(user, "ACADEMIC") ? s.cgpa : 0,
+    sgpaSem1: hasScope(user, "ACADEMIC") ? s.sgpaSem1 : 0,
+    sgpaSem2: hasScope(user, "ACADEMIC") ? s.sgpaSem2 : 0,
     // Profile URLs — their own section's scope only.
     githubUrl: hasScope(user, "GITHUB") ? s.githubUrl : null,
     leetcodeUrl: hasScope(user, "CODING") ? s.leetcodeUrl : null,

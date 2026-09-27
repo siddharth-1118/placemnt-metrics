@@ -52,6 +52,8 @@ export async function GET() {
   if (has("ACADEMIC"))
     cols.push(
       { header: "CGPA", width: 8, value: (s) => s.cgpa },
+      { header: "Sem 1 SGPA", width: 11, value: (s) => s.sgpaSem1 },
+      { header: "Sem 2 SGPA", width: 11, value: (s) => s.sgpaSem2 },
       { header: "10th %", width: 8, value: (s) => s.tenthPercent },
       { header: "12th %", width: 8, value: (s) => s.twelfthPercent },
       { header: "Academic (10)", width: 12, value: (s) => s.scores.academic },

@@ -9,6 +9,8 @@ export type DocCategoryKey =
   | "TENTH_MARKSHEET"
   | "TWELFTH_MARKSHEET"
   | "CGPA_MARKSHEET"
+  | "SEM1_MARKSHEET"
+  | "SEM2_MARKSHEET"
   | "INTERNSHIP"
   | "SKILL_CERT"
   | "COMPETITION"
@@ -28,7 +30,9 @@ export interface CategoryDef {
 export const DOC_CATEGORIES: CategoryDef[] = [
   { key: "TENTH_MARKSHEET", label: "10th Marksheet", hint: "Marksheet / pass certificate showing the 10th percentage" },
   { key: "TWELFTH_MARKSHEET", label: "12th Marksheet", hint: "Marksheet / pass certificate showing the 12th percentage" },
-  { key: "CGPA_MARKSHEET", label: "CGPA / Semester Marksheet", hint: "Current semester grade report or consolidated marksheet" },
+  { key: "CGPA_MARKSHEET", label: "CGPA / Consolidated Marksheet", hint: "Current consolidated grade report showing the overall CGPA" },
+  { key: "SEM1_MARKSHEET", label: "Semester 1 Marksheet", hint: "Sem 1 grade report showing the Semester 1 SGPA" },
+  { key: "SEM2_MARKSHEET", label: "Semester 2 Marksheet", hint: "Sem 2 grade report showing the Semester 2 SGPA" },
   { key: "INTERNSHIP", label: "Internship Proof", hint: "Offer letter, completion certificate or experience letter" },
   { key: "SKILL_CERT", label: "Skills & Global Certifications", hint: "Course certificates (AWS, Coursera, NPTEL, Udemy…) — upload one per certificate" },
   { key: "COMPETITION", label: "Competitions & Hackathons", hint: "Winner/participation certificates or event photos" },

@@ -25,6 +25,9 @@ create table if not exists students (
   tenth_percent   double precision not null,
   twelfth_percent double precision not null,
   cgpa            double precision not null,
+  -- Derived: (sgpa_sem1 + sgpa_sem2) / 2
+  sgpa_sem1       double precision not null default 0,
+  sgpa_sem2       double precision not null default 0,
 
   github_url      text,
   leetcode_url    text,

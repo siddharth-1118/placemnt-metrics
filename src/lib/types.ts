@@ -254,6 +254,10 @@ export interface StudentDto {
   tenthPercent: number;
   twelfthPercent: number;
   cgpa: number;
+  /** Semester 1 SGPA (0–10). */
+  sgpaSem1: number;
+  /** Semester 2 SGPA (0–10). */
+  sgpaSem2: number;
   githubUrl: string | null;
   leetcodeUrl: string | null;
   proofUrls: ProofLink[];
@@ -275,7 +279,10 @@ export interface SubmitStudentInput {
   facultyAdvisor?: string;
   tenthPercent: number;
   twelfthPercent: number;
-  cgpa: number;
+  /** Semester 1 SGPA — the CGPA is derived as (sem1 + sem2) / 2 server-side. */
+  sgpaSem1: number;
+  /** Semester 2 SGPA. */
+  sgpaSem2: number;
   githubUrl?: string;
   leetcodeUrl?: string;
   proofUrls?: ProofLink[];

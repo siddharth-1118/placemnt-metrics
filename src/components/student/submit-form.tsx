@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
+  Calculator,
   CheckCircle2,
   Loader2,
   UserRound,
@@ -23,7 +24,8 @@ const initialForm = {
   facultyAdvisor: "",
   tenthPercent: "",
   twelfthPercent: "",
-  cgpa: "",
+  sgpaSem1: "",
+  sgpaSem2: "",
   githubUrl: "",
   leetcodeUrl: "",
   password: "",
@@ -72,11 +74,19 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
     };
   }
 
+  /** CGPA is derived live: (Sem 1 SGPA + Sem 2 SGPA) / 2, rounded to 2 dp. */
+  const derivedCgpa = useMemo(() => {
+    const s1 = Number(form.sgpaSem1);
+    const s2 = Number(form.sgpaSem2);
+    if (isNaN(s1) || isNaN(s2) || form.sgpaSem1 === "" || form.sgpaSem2 === "") return null;
+    return Math.round(((s1 + s2) / 2) * 100) / 100;
+  }, [form.sgpaSem1, form.sgpaSem2]);
+
   // Live estimated academic marks calculation according to official SRM rubric (out of 10.0)
   const estAcademicScore = useMemo(() => {
     const tenth = Number(form.tenthPercent);
     const twelfth = Number(form.twelfthPercent);
-    const cgpa = Number(form.cgpa);
+    const cgpa = derivedCgpa ?? NaN;
 
     let score = 0;
     if (!isNaN(tenth) && tenth >= 0 && tenth <= 100) {
@@ -104,7 +114,7 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
     }
 
     return Math.min(10.0, Math.round(score * 10) / 10);
-  }, [form.tenthPercent, form.twelfthPercent, form.cgpa]);
+  }, [form.tenthPercent, form.twelfthPercent, derivedCgpa]);
 
   function validate(): boolean {
     const errs: FieldErrors = {};
@@ -122,9 +132,13 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
     if (!form.twelfthPercent || isNaN(twelfth) || twelfth < 0 || twelfth > 100)
       errs.twelfthPercent = "Enter a valid 12th percentage (0–100)";
 
-    const cgpa = Number(form.cgpa);
-    if (!form.cgpa || isNaN(cgpa) || cgpa < 0 || cgpa > 10)
-      errs.cgpa = "Enter a valid CGPA (0.00–10.00)";
+    const s1 = Number(form.sgpaSem1);
+    if (!form.sgpaSem1 || isNaN(s1) || s1 < 0 || s1 > 10)
+      errs.sgpaSem1 = "Enter a valid Semester 1 SGPA (0.00–10.00)";
+
+    const s2 = Number(form.sgpaSem2);
+    if (!form.sgpaSem2 || isNaN(s2) || s2 < 0 || s2 > 10)
+      errs.sgpaSem2 = "Enter a valid Semester 2 SGPA (0.00–10.00)";
 
     if (form.password) {
       if (form.password.length < 8) errs.password = "Password must be at least 8 characters";
@@ -160,7 +174,8 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
           facultyAdvisor: form.facultyAdvisor.trim() || undefined,
           tenthPercent: Number(form.tenthPercent),
           twelfthPercent: Number(form.twelfthPercent),
-          cgpa: Number(form.cgpa),
+          sgpaSem1: Number(form.sgpaSem1),
+          sgpaSem2: Number(form.sgpaSem2),
           githubUrl: form.githubUrl.trim() || undefined,
           leetcodeUrl: form.leetcodeUrl.trim() || undefined,
           password: form.password || undefined,
@@ -325,7 +340,7 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
           </span>
         </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field
             label="10th Percentage (%) *"
             error={errors.tenthPercent}
@@ -361,21 +376,49 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
           </Field>
 
           <Field
-            label="Current CGPA *"
-            error={errors.cgpa}
-            hint=">9.5: 5.0 | 9.1–9.5: 4.0 | 8.6–9.0: 3.0 | 7.5–8.5: 2.0"
+            label="Semester 1 SGPA *"
+            error={errors.sgpaSem1}
+            hint="As printed on your Sem 1 grade report"
           >
             <Input
               type="number"
               step="0.01"
               min={0}
               max={10}
-              placeholder="e.g. 9.20"
-              value={form.cgpa}
-              onChange={set("cgpa")}
+              placeholder="e.g. 8.75"
+              value={form.sgpaSem1}
+              onChange={set("sgpaSem1")}
               className="text-xs h-8"
             />
           </Field>
+
+          <Field
+            label="Semester 2 SGPA *"
+            error={errors.sgpaSem2}
+            hint="As printed on your Sem 2 grade report"
+          >
+            <Input
+              type="number"
+              step="0.01"
+              min={0}
+              max={10}
+              placeholder="e.g. 9.10"
+              value={form.sgpaSem2}
+              onChange={set("sgpaSem2")}
+              className="text-xs h-8"
+            />
+          </Field>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2 rounded border border-[#b8ddc4] bg-[#eaf4ed] px-3 py-2 dark:border-[#215736] dark:bg-[#133822]">
+          <Calculator className="h-4 w-4 shrink-0 text-[#165b33] dark:text-[#78d69f]" />
+          <p className="text-xs text-[#165b33] dark:text-[#78d69f]">
+            CGPA is calculated automatically:&nbsp;
+            <strong>
+              {(derivedCgpa ?? 0).toFixed(2)} / 10
+            </strong>
+            &nbsp;= (Sem 1 SGPA {form.sgpaSem1 || "—"} + Sem 2 SGPA {form.sgpaSem2 || "—"}) ÷ 2
+          </p>
         </div>
       </div>
 

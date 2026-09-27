@@ -34,7 +34,12 @@ const submitSchema = z.object({
   facultyAdvisor: z.string().trim().max(80).optional().or(z.literal("")),
   tenthPercent: z.coerce.number().min(0, "Must be ≥ 0").max(100, "Must be ≤ 100"),
   twelfthPercent: z.coerce.number().min(0, "Must be ≥ 0").max(100, "Must be ≤ 100"),
-  cgpa: z.coerce.number().min(0, "Must be ≥ 0").max(10, "Must be ≤ 10"),
+  /// Semester SGPAs — the CGPA is always derived as (sem1 + sem2) / 2.
+  sgpaSem1: z.coerce.number().min(0, "Must be ≥ 0").max(10, "Must be ≤ 10"),
+  sgpaSem2: z.coerce.number().min(0, "Must be ≥ 0").max(10, "Must be ≤ 10"),
+  /// Accepted but ignored: the server recomputes CGPA from the two SGPAs so
+  /// clients can never submit a CGPA that disagrees with the semester marks.
+  cgpa: z.coerce.number().min(0).max(10).optional(),
   githubUrl: z
     .string()
     .trim()
@@ -108,6 +113,10 @@ export async function POST(req: Request) {
   const d = parsed.data;
   const proofUrls = (d.proofUrls ?? []).filter((p) => p.label && p.url);
 
+  // CGPA is DERIVED, never client-trusted: (Sem 1 SGPA + Sem 2 SGPA) / 2,
+  // rounded to 2 decimals.
+  const cgpa = Math.round(((d.sgpaSem1 + d.sgpaSem2) / 2) * 100) / 100;
+
   const data = {
     registerNumber: d.registerNumber,
     fullName: d.fullName,
@@ -115,7 +124,9 @@ export async function POST(req: Request) {
     facultyAdvisor: d.facultyAdvisor || null,
     tenthPercent: d.tenthPercent,
     twelfthPercent: d.twelfthPercent,
-    cgpa: d.cgpa,
+    sgpaSem1: d.sgpaSem1,
+    sgpaSem2: d.sgpaSem2,
+    cgpa,
     githubUrl: d.githubUrl || null,
     leetcodeUrl: d.leetcodeUrl || null,
     proofUrls: JSON.stringify(proofUrls),
@@ -153,7 +164,7 @@ export async function POST(req: Request) {
   // Default academic score from marks (coordinator-adjustable later).
   // Computed for EVERY submission path — including a signed-in coordinator
   // submitting their own placement profile under their account email.
-  const academic = suggestAcademicScore(d.tenthPercent, d.twelfthPercent, d.cgpa);
+  const academic = suggestAcademicScore(d.tenthPercent, d.twelfthPercent, cgpa);
 
   let student;
   if (existing) {

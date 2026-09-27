@@ -20,6 +20,16 @@ export function StudentSummaryCard({ s }: { s: StudentDto }) {
     { label: "10th Board", val: fmtPct(s.tenthPercent), weight: "Max 2.5 pts" },
     { label: "12th / Diploma", val: fmtPct(s.twelfthPercent), weight: "Max 2.5 pts" },
     { label: "Degree CGPA", val: s.cgpa.toFixed(2), weight: "Max 5.0 pts" },
+    {
+      label: "Sem 1 SGPA",
+      val: s.sgpaSem1.toFixed(2),
+      weight: "CGPA input",
+    },
+    {
+      label: "Sem 2 SGPA",
+      val: s.sgpaSem2.toFixed(2),
+      weight: "CGPA input",
+    },
   ];
 
   return (
@@ -82,7 +92,7 @@ export function StudentSummaryCard({ s }: { s: StudentDto }) {
         <h3 className="text-xs font-semibold uppercase tracking-wider text-[#5c6470] dark:text-[#94a3b8]">
           Official Academic Records
         </h3>
-        <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
           {academicMarks.map((m) => (
             <div
               key={m.label}

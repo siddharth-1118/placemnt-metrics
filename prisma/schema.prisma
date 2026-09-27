@@ -34,7 +34,12 @@ model Student {
   // Academic marks
   tenthPercent   Float
   twelfthPercent Float
+  /// Degree CGPA — auto-derived as (sgpaSem1 + sgpaSem2) / 2 on every submit.
   cgpa           Float
+  /// Semester 1 SGPA (0–10) as printed on the Sem 1 grade report.
+  sgpaSem1       Float   @default(0)
+  /// Semester 2 SGPA (0–10) as printed on the Sem 2 grade report.
+  sgpaSem2       Float   @default(0)
 
   // Profile links
   githubUrl      String?

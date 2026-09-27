@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS "Student" (
     "tenthPercent" DOUBLE PRECISION NOT NULL,
     "twelfthPercent" DOUBLE PRECISION NOT NULL,
     "cgpa" DOUBLE PRECISION NOT NULL,
+    "sgpaSem1" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "sgpaSem2" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "githubUrl" TEXT,
     "leetcodeUrl" TEXT,
     "proofUrls" TEXT NOT NULL DEFAULT '[]',

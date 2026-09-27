@@ -35,6 +35,8 @@ const REQUIRED_COLUMNS: { name: string; ddl: string }[] = [
   { name: "scoreInhouse", ddl: `ALTER TABLE "Student" ADD COLUMN "scoreInhouse" DOUBLE PRECISION NOT NULL DEFAULT 0` },
   { name: "scoreMembership", ddl: `ALTER TABLE "Student" ADD COLUMN "scoreMembership" DOUBLE PRECISION NOT NULL DEFAULT 0` },
   { name: "scoreShl", ddl: `ALTER TABLE "Student" ADD COLUMN "scoreShl" DOUBLE PRECISION NOT NULL DEFAULT 0` },
+  { name: "sgpaSem1", ddl: `ALTER TABLE "Student" ADD COLUMN "sgpaSem1" DOUBLE PRECISION NOT NULL DEFAULT 0` },
+  { name: "sgpaSem2", ddl: `ALTER TABLE "Student" ADD COLUMN "sgpaSem2" DOUBLE PRECISION NOT NULL DEFAULT 0` },
 ];
 
 export interface EnsureSchemaResult {

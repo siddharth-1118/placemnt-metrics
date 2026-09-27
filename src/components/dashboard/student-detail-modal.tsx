@@ -371,7 +371,12 @@ export function StudentDetailModal({
                       </p>
                       <p className="flex items-center justify-between gap-3">
                         <span className="text-muted-foreground">CGPA</span>
-                        <span className="font-semibold tabular-nums">{student.cgpa.toFixed(2)}</span>
+                        <span className="font-semibold tabular-nums">
+                          {student.cgpa.toFixed(2)}
+                          <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                            (S1 {student.sgpaSem1.toFixed(2)} + S2 {student.sgpaSem2.toFixed(2)}) ÷ 2
+                          </span>
+                        </span>
                       </p>
                       <p className="flex items-center justify-between gap-3 border-t pt-1.5">
                         <span className="text-muted-foreground">Auto score</span>
