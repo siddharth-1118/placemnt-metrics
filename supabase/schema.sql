@@ -1,70 +1,18 @@
 -- =====================================================================
--- SRM Placement Ranking System — PostgreSQL / Supabase schema (DDL)
--- Mirrors prisma/schema.prisma (provider "postgresql").
--- NOTE: `npx prisma db push` against DATABASE_URL is the primary setup path;
--- this file is a reference/manual fallback.
+-- DEPRECATED — see supabase/setup.sql
+--
+-- This file used to create lowercase snake_case tables (students,
+-- is_super_admin, …) that the app cannot query: Prisma generates quoted
+-- PascalCase identifiers ("Student", "isSuperAdmin"), so anything built
+-- from this file made every request fail with
+--   ERROR 42703: column "is_super_admin" of relation "students" does not exist
+-- (or "relation Student does not exist").
+--
+-- supabase/setup.sql is now the ONE canonical script: it creates the
+-- exact Prisma schema (PascalCase), self-heals missing columns on older
+-- databases (including the Semester 1/2 SGPA columns), drops these
+-- legacy lowercase leftovers, and seeds the coordinator accounts.
+--
+-- Run supabase/setup.sql in the Supabase SQL Editor instead — it is
+-- idempotent and safe to re-run.
 -- =====================================================================
-
-create table if not exists students (
-  id              text primary key,
-  register_number text not null unique,
-  full_name       text not null,
-  email           text not null unique,
-  faculty_advisor text,
-
-  tenth_percent   double precision not null,
-  twelfth_percent double precision not null,
-  cgpa            double precision not null,
-  -- Sem 1 / Sem 2 SGPA as printed on the grade reports;
-  -- cgpa is derived as (sgpa_sem1 + sgpa_sem2) / 2.
-  sgpa_sem1       double precision not null default 0,
-  sgpa_sem2       double precision not null default 0,
-
-  github_url      text,
-  leetcode_url    text,
-  -- JSON array of { label, url }
-  proof_urls      text not null default '[]',
-
-  -- auth & role
-  role               text not null default 'STUDENT', -- STUDENT | COORDINATOR
-  evaluator_assigned boolean not null default false,
-  password_hash      text,
-
-  status          text not null default 'PENDING', -- PENDING | VERIFIED
-  coordinator_note text,
-
-  score_academic   double precision not null default 0, -- max 40
-  score_github     double precision not null default 0, -- max 15
-  score_coding     double precision not null default 0, -- max 10
-  score_projects   double precision not null default 0, -- max 10
-  score_internship double precision not null default 0, -- max 10
-  score_extras     double precision not null default 0, -- max 15
-  total_score      double precision not null default 0,
-  rank             integer,
-
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists students_status_idx     on students (status);
-create index if not exists students_total_score_idx on students (total_score desc);
-
-create table if not exists scrape_results (
-  id           text primary key,
-  student_id   text not null references students (id) on delete cascade,
-  platform     text not null,                        -- GITHUB | LEETCODE
-  status       text not null default 'PENDING',      -- PENDING | RUNNING | SUCCESS | FAILED
-  mode         text,                                 -- live | mock
-  data_json    text,                                 -- platform-specific scraped payload
-  error_message text,
-  started_at   timestamptz not null default now(),
-  finished_at  timestamptz,
-  constraint scrape_results_student_platform_key unique (student_id, platform)
-);
-
-create index if not exists scrape_results_student_idx on scrape_results (student_id);
-
--- Optional Row Level Security hardening for Supabase:
--- keep service-role (API) access, deny anon by default.
--- alter table students        enable row level security;
--- alter table scrape_results  enable row level security;

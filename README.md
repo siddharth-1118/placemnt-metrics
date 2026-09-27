@@ -203,7 +203,7 @@ curl -X POST http://localhost:3000/api/students \
     "registerNumber": "RA2211003019999",
     "fullName": "Test User",
     "email": "test_user@srmist.edu.in",
-    "tenthPercent": 90, "twelfthPercent": 91, "cgpa": 8.8,
+    "tenthPercent": 90, "twelfthPercent": 91, "sgpaSem1": 8.9, "sgpaSem2": 8.7,
     "githubUrl": "https://github.com/username",
     "hackerRankUrl": "https://www.hackerrank.com/profile/username"
   }'
@@ -213,8 +213,10 @@ curl -X POST http://localhost:3000/api/students \
 
 1. Create a Supabase project; copy the Postgres connection string.
 2. Set `DATABASE_URL="postgresql://…"` in your host's env (Vercel, Fly, Docker…).
-3. Create tables via the Supabase SQL editor using `supabase/schema.sql`,
+3. Create tables via the Supabase SQL editor using `supabase/setup.sql` (canonical —
+   matches the Prisma schema exactly, self-heals older databases, seeds coordinators),
    **or** switch `provider` to `"postgresql"` in `prisma/schema.prisma` and run `npx prisma db push`.
+   (`supabase/schema.sql` is deprecated — it created lowercase tables the app cannot query.)
 4. Deploy (`npm run build && npm start`). Set `SCRAPE_MODE=live` and add `GITHUB_TOKEN` in production.
 
 ## Notes & limitations
