@@ -54,9 +54,10 @@ export function Navbar({ user }: NavbarProps) {
     navLinks = [
       { href: "/coordinator/dashboard", label: "Dashboard" },
       { href: "/coordinator/dashboard#students", label: "Students" },
-      { href: "/#matrix", label: "Placement Matrix" },
       { href: "/coordinator/dashboard#scores", label: "Scores" },
       { href: "/coordinator/dashboard#reports", label: "Reports" },
+      { href: "/#matrix", label: "Placement Matrix" },
+      { href: "/coordinator/profile", label: "My Profile" },
     ];
   } else if (isStudent) {
     navLinks = [
@@ -137,7 +138,15 @@ export function Navbar({ user }: NavbarProps) {
 
           {user ? (
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 rounded border border-[#ded9ce] bg-[#f9f8f5] px-2.5 py-1 text-xs dark:border-[#2a3341] dark:bg-[#1b222c]">
+              <Link
+                href="/coordinator/profile"
+                title="My Profile"
+                className={`flex items-center gap-2 rounded border px-2.5 py-1 text-xs transition hover:bg-[#f2efe9] dark:hover:bg-[#232b36] ${
+                  pathname === "/coordinator/profile"
+                    ? "border-[#b8ddc4] bg-[#eaf4ed] dark:border-[#265335] dark:bg-[#133822]"
+                    : "border-[#ded9ce] bg-[#f9f8f5] dark:border-[#2a3341] dark:bg-[#1b222c]"
+                }`}
+              >
                 <div className="flex flex-col text-left">
                   <span className="max-w-[130px] truncate text-xs font-semibold text-[#1c2024] dark:text-white">
                     {user.fullName}
@@ -146,7 +155,7 @@ export function Navbar({ user }: NavbarProps) {
                     {roleLabel}
                   </span>
                 </div>
-              </div>
+              </Link>
 
               <Button
                 variant="outline"
@@ -203,10 +212,14 @@ export function Navbar({ user }: NavbarProps) {
         <div className="border-t border-[#ded9ce] bg-white p-3.5 shadow-md dark:border-[#262f3c] dark:bg-[#161c24] md:hidden">
           {user && (
             <div className="mb-2.5 flex items-center justify-between border-b border-[#ded9ce] pb-2.5 dark:border-[#262f3c]">
-              <div>
+              <Link
+                href="/coordinator/profile"
+                onClick={() => setMobileOpen(false)}
+                className="flex-1"
+              >
                 <p className="text-xs font-bold text-[#1c2024] dark:text-white">{user.fullName}</p>
                 <p className="text-[11px] text-[#6b7280] dark:text-[#94a3b8]">{roleLabel}</p>
-              </div>
+              </Link>
             </div>
           )}
 
