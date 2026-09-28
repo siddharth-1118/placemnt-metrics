@@ -33,6 +33,23 @@ const SCORE_FIELDS: { key: keyof ScoreBreakdown & string; label: string; cap: nu
   { key: "shl", label: "SHL / Talent Discovery / NCET", cap: SCORE_CAPS.shl, hint: "Score bands: 90–100→10 … <25→0" },
 ];
 
+/** Extract the editable score state from a student DTO (auto + manual fields). */
+function scoresOf(s: StudentDto): ScoreBreakdown {
+  return {
+    academic: s.scores.academic,
+    github: s.scores.github,
+    coding: s.scores.coding,
+    internship: s.scores.internship,
+    certifications: s.scores.certifications,
+    projects: s.scores.projects,
+    fullstack: s.scores.fullstack,
+    hackathons: s.scores.hackathons,
+    inhouse: s.scores.inhouse,
+    membership: s.scores.membership,
+    shl: s.scores.shl,
+  };
+}
+
 function diffRows(s: StudentDto, show: { github: boolean; coding: boolean }) {
   const gh = s.scrapes.find((x) => x.platform === "GITHUB");
   const lc = s.scrapes.find((x) => x.platform === "LEETCODE");
@@ -122,6 +139,11 @@ export function StudentDetailModal({
     academic: 0, github: 0, coding: 0, internship: 0, certifications: 0,
     projects: 0, fullstack: 0, hackathons: 0, inhouse: 0, membership: 0, shl: 0,
   });
+  /** Sections edited since the last save — ONLY these are sent on save, so a
+   *  stale modal can never silently revert another coordinator's fresh marks. */
+  const [dirty, setDirty] = useState<Set<keyof ScoreBreakdown>>(new Set());
+  /** True when the coordinator note was edited — only then is it sent. */
+  const [noteDirty, setNoteDirty] = useState(false);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [rescraping, setRescraping] = useState(false);
@@ -136,20 +158,10 @@ export function StudentDetailModal({
         if (!res.ok) throw new Error(body?.error ?? "Failed to load student");
         if (!alive) return;
         setStudent(body.student);
-        setScores({
-          academic: body.student.scores.academic,
-          github: body.student.scores.github,
-          coding: body.student.scores.coding,
-          internship: body.student.scores.internship,
-          certifications: body.student.scores.certifications,
-          projects: body.student.scores.projects,
-          fullstack: body.student.scores.fullstack,
-          hackathons: body.student.scores.hackathons,
-          inhouse: body.student.scores.inhouse,
-          membership: body.student.scores.membership,
-          shl: body.student.scores.shl,
-        });
+        setScores(scoresOf(body.student));
+        setDirty(new Set());
         setNote(body.student.coordinatorNote ?? "");
+        setNoteDirty(false);
       } catch (e) {
         if (alive) setError((e as Error).message);
       } finally {
@@ -227,8 +239,10 @@ export function StudentDetailModal({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // Send only the sections this coordinator may score — the server
-          // rejects out-of-scope writes, so restricted fields stay untouched.
+          // Send ONLY the sections this coordinator actually edited (plus
+          // permission filtering): the server merges partial updates, so
+          // sections another coordinator saved meanwhile are never reverted
+          // by a stale modal snapshot.
           scores: Object.fromEntries(
             Object.entries({
               internship: Number(scores.internship),
@@ -239,15 +253,25 @@ export function StudentDetailModal({
               inhouse: Number(scores.inhouse),
               membership: Number(scores.membership),
               shl: Number(scores.shl),
-            }).filter(([k]) => scoreFieldAllowed(k as keyof ScoreBreakdown))
+            }).filter(
+              ([k]) =>
+                dirty.has(k as keyof ScoreBreakdown) &&
+                scoreFieldAllowed(k as keyof ScoreBreakdown)
+            )
           ),
-          coordinatorNote: note || undefined,
+          coordinatorNote: noteDirty ? note : undefined,
           ...(verify === undefined ? {} : { verify }),
         }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error ?? "Failed to save scores");
       setStudent(body.student);
+      // Adopt the server-confirmed values (clamped caps, auto recalcs) and
+      // clear the dirty set so a second Save can't re-send stale edits.
+      setScores(scoresOf(body.student));
+      setDirty(new Set());
+      setNote(body.student.coordinatorNote ?? "");
+      setNoteDirty(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
       onChanged();
@@ -611,6 +635,7 @@ export function StudentDetailModal({
                           onChange={(e) => {
                             const v = e.target.value === "" ? 0 : Math.min(f.cap, Math.max(0, Number(e.target.value)));
                             setScores((s) => ({ ...s, [f.key]: v }));
+                            setDirty((d) => new Set(d).add(f.key));
                           }}
                         />
                         <p className="text-[11px] text-muted-foreground">{f.hint}</p>
@@ -632,7 +657,10 @@ export function StudentDetailModal({
                     <Input
                       placeholder="Coordinator note (optional)"
                       value={note}
-                      onChange={(e) => setNote(e.target.value)}
+                      onChange={(e) => {
+                        setNote(e.target.value);
+                        setNoteDirty(true);
+                      }}
                       className="h-9 w-full"
                     />
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
