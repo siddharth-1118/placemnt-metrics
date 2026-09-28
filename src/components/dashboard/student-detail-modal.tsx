@@ -33,6 +33,12 @@ const SCORE_FIELDS: { key: keyof ScoreBreakdown & string; label: string; cap: nu
   { key: "shl", label: "SHL / Talent Discovery / NCET", cap: SCORE_CAPS.shl, hint: "Score bands: 90–100→10 … <25→0" },
 ];
 
+/** The three system-calculated components (super-admin overridable). */
+type AutoScoreField = "academic" | "github" | "coding";
+const AUTO_SCORE_FIELDS: AutoScoreField[] = ["academic", "github", "coding"];
+const isAutoField = (k: keyof ScoreBreakdown): k is AutoScoreField =>
+  AUTO_SCORE_FIELDS.includes(k as AutoScoreField);
+
 /** Extract the editable score state from a student DTO (auto + manual fields). */
 function scoresOf(s: StudentDto): ScoreBreakdown {
   return {
@@ -142,6 +148,8 @@ export function StudentDetailModal({
   /** Sections edited since the last save — ONLY these are sent on save, so a
    *  stale modal can never silently revert another coordinator's fresh marks. */
   const [dirty, setDirty] = useState<Set<keyof ScoreBreakdown>>(new Set());
+  /** Auto components the super admin asked to reset back to calculated values. */
+  const [autoReset, setAutoReset] = useState<Set<"academic" | "github" | "coding">>(new Set());
   /** True when the coordinator note was edited — only then is it sent. */
   const [noteDirty, setNoteDirty] = useState(false);
   const [note, setNote] = useState("");
@@ -160,6 +168,7 @@ export function StudentDetailModal({
         setStudent(body.student);
         setScores(scoresOf(body.student));
         setDirty(new Set());
+        setAutoReset(new Set());
         setNote(body.student.coordinatorNote ?? "");
         setNoteDirty(false);
       } catch (e) {
@@ -222,13 +231,25 @@ export function StudentDetailModal({
         if (res.ok) {
           const body = await res.json();
           setStudent(body.student);
+          // Sync the auto inputs with fresh scrape results — unless the super
+          // admin is mid-edit (or resetting) one of them right now.
+          setScores((prev) =>
+            AUTO_SCORE_FIELDS.every((k) => !dirty.has(k))
+              ? {
+                  ...prev,
+                  academic: body.student.scores.academic,
+                  github: body.student.scores.github,
+                  coding: body.student.scores.coding,
+                }
+              : prev
+          );
         }
       } catch {
         /* ignore transient errors */
       }
     }, 2500);
     return () => clearInterval(t);
-  }, [pendingScrapes, studentId]);
+  }, [pendingScrapes, studentId, dirty]);
 
   async function save(verify?: boolean) {
     if (!student) return;
@@ -245,6 +266,11 @@ export function StudentDetailModal({
           // by a stale modal snapshot.
           scores: Object.fromEntries(
             Object.entries({
+              // Auto components: only the super admin may send these (each
+              // becomes a persistent manual override on the server).
+              academic: Number(scores.academic),
+              github: Number(scores.github),
+              coding: Number(scores.coding),
               internship: Number(scores.internship),
               certifications: Number(scores.certifications),
               projects: Number(scores.projects),
@@ -253,12 +279,14 @@ export function StudentDetailModal({
               inhouse: Number(scores.inhouse),
               membership: Number(scores.membership),
               shl: Number(scores.shl),
-            }).filter(
-              ([k]) =>
-                dirty.has(k as keyof ScoreBreakdown) &&
-                scoreFieldAllowed(k as keyof ScoreBreakdown)
-            )
+            }).filter(([k]) => {
+              const key = k as keyof ScoreBreakdown;
+              if (!dirty.has(key)) return false;
+              if (isAutoField(key)) return isSuperAdmin && !autoReset.has(key);
+              return scoreFieldAllowed(key);
+            })
           ),
+          ...(isSuperAdmin && autoReset.size > 0 ? { autoReset: [...autoReset] } : {}),
           coordinatorNote: noteDirty ? note : undefined,
           ...(verify === undefined ? {} : { verify }),
         }),
@@ -270,6 +298,7 @@ export function StudentDetailModal({
       // clear the dirty set so a second Save can't re-send stale edits.
       setScores(scoresOf(body.student));
       setDirty(new Set());
+      setAutoReset(new Set());
       setNote(body.student.coordinatorNote ?? "");
       setNoteDirty(false);
       setSavedFlash(true);
@@ -613,10 +642,31 @@ export function StudentDetailModal({
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {SCORE_FIELDS.filter((f) => scoreFieldAllowed(f.key)).map((f) => (
+                    {SCORE_FIELDS.filter((f) => isSuperAdmin || scoreFieldAllowed(f.key)).map((f) => {
+                      const isAuto = isAutoField(f.key);
+                      const overridden = isAuto ? (student.autoOverrides?.[f.key as AutoScoreField] ?? false) : false;
+                      const isResetting = isAuto ? autoReset.has(f.key as AutoScoreField) : false;
+                      const touched = isAuto && (overridden || dirty.has(f.key)) && !isResetting;
+                      return (
                       <div key={f.key} className="space-y-1">
                         <Label className="text-xs">
                           {f.label} <span className="text-muted-foreground">/ {f.cap}</span>
+                          {isAuto && !isSuperAdmin && (
+                            <span
+                              className="ml-1.5 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-600"
+                              title="Calculated automatically from marks bands / live profile scrapes — read-only"
+                            >
+                              auto
+                            </span>
+                          )}
+                          {touched && (
+                            <span
+                              className="ml-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600"
+                              title="Manual override — survives rescrapes and recalculations until reset"
+                            >
+                              override
+                            </span>
+                          )}
                           {isSharedScoreField({ isSuperAdmin: false, permissionScopes }, f.key) && (
                             <span
                               className="ml-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600"
@@ -631,6 +681,8 @@ export function StudentDetailModal({
                           min={0}
                           max={f.cap}
                           step="0.5"
+                          disabled={isAuto && !isSuperAdmin}
+                          title={isAuto && !isSuperAdmin ? "Calculated automatically — only the super admin can change this" : undefined}
                           value={String(scores[f.key])}
                           onChange={(e) => {
                             const v = e.target.value === "" ? 0 : Math.min(f.cap, Math.max(0, Number(e.target.value)));
@@ -639,8 +691,25 @@ export function StudentDetailModal({
                           }}
                         />
                         <p className="text-[11px] text-muted-foreground">{f.hint}</p>
+                        {isAuto && isSuperAdmin && touched && (
+                          <button
+                            type="button"
+                            className="text-[10px] font-medium text-muted-foreground underline hover:text-foreground"
+                            onClick={() => {
+                              setAutoReset((s) => new Set(s).add(f.key as AutoScoreField));
+                              setDirty((d) => {
+                                const n = new Set(d);
+                                n.delete(f.key as AutoScoreField);
+                                return n;
+                              });
+                            }}
+                          >
+                            Reset to auto-calculated
+                          </button>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="mt-4 space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">

@@ -91,6 +91,12 @@ model Student {
   projectLinks   ProjectLink[]
 
   // Scores — official AO1 rubric out of 100 (Placement Cell PPT)
+  /// Super-admin manual overrides for the three auto-calculated components.
+  /// When true, re-scrapes and recalculations never overwrite that score —
+  /// only the super admin can (clearing the flag returns it to auto).
+  academicOverridden Boolean @default(false)
+  githubOverridden   Boolean @default(false)
+  codingOverridden   Boolean @default(false)
   scoreAcademic      Float @default(0) // max 10 (10th 2.5 · 12th 2.5 · CGPA 5)
   scoreGithub        Float @default(0) // max 15
   scoreCoding        Float @default(0) // max 10 (LeetCode · CodeChef · …)

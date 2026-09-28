@@ -245,6 +245,14 @@ export interface ScoreBreakdown {
   shl: number;
 }
 
+/** Which auto-calculated components currently carry a super-admin manual
+ *  override (their value survives rescrapes/recalculations until cleared). */
+export interface AutoOverrides {
+  academic: boolean;
+  github: boolean;
+  coding: boolean;
+}
+
 export interface StudentDto {
   id: string;
   registerNumber: string;
@@ -266,6 +274,8 @@ export interface StudentDto {
   documents: DocumentDto[];
   projectLinks: ProjectLinkDto[];
   scores: ScoreBreakdown & { total: number };
+  /** Super-admin manual overrides of the auto components. */
+  autoOverrides: AutoOverrides;
   rank: number | null;
   createdAt: string;
   updatedAt: string;

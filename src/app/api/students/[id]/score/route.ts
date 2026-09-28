@@ -26,6 +26,9 @@ const scoreSchema = z.object({
     .optional(),
   verify: z.boolean().optional(),
   coordinatorNote: z.string().trim().max(500).optional(),
+  /** Super admin only: clear manual overrides on these auto components and
+   *  return them to the calculated values (from marks bands / live scrapes). */
+  autoReset: z.array(z.enum(["academic", "github", "coding"])).max(3).optional(),
 });
 
 /**
@@ -57,11 +60,12 @@ export async function PATCH(
   }  const incoming = parsed.data.scores ?? {};
 
   // Academic, GitHub and Coding are system-calculated (band tables from
-  // marks + the live scrapes) — manual writes are rejected, even for the
-  // super admin.
+  // marks + the live scrapes). Coordinators can never write them; the super
+  // admin MAY override them manually — the stored value then wins over
+  // future rescrapes/recalculations until the super admin clears it.
   const AUTO_FIELDS = ["academic", "github", "coding"] as const;
   for (const key of AUTO_FIELDS) {
-    if (incoming[key] !== undefined) {
+    if (incoming[key] !== undefined && !user.isSuperAdmin) {
       return NextResponse.json(
         { error: `${key} marks are calculated automatically and cannot be entered manually` },
         { status: 422 }
@@ -71,8 +75,10 @@ export async function PATCH(
 
   // Scoped coordinators may only write their assigned rubric sections (1:1
   // with the submission sections). Super admins and coordinators with no
-  // scope restrictions pass every check.
+  // scope restrictions pass every check. Auto fields are handled above
+  // (super-admin override allowed), so they are skipped here.
   for (const key of Object.keys(incoming)) {
+    if ((AUTO_FIELDS as readonly string[]).includes(key) && user.isSuperAdmin) continue;
     if (!canWriteScoreField(user, key)) {
       return NextResponse.json(
         { error: "You do not have permission to score this section" },
@@ -81,13 +87,18 @@ export async function PATCH(
     }
   }
 
-  // Recompute the automatic components from marks + latest scrapes, merge
-  // coordinator-entered sections with existing values (partial updates).
+  const autoReset = user.isSuperAdmin ? (parsed.data.autoReset ?? []) : [];
+
+  // Recompute the automatic components: overridden ones keep their stored
+  // value; a component being reset right now takes its RAW calculated value
+  // (marks bands / latest scrapes). Then merge coordinator-entered sections
+  // with existing values (partial updates).
   const AUTO = await autoScoresFor(student.id);
+  const RAW = autoReset.length ? await autoScoresFor(student.id, { respectOverrides: false }) : AUTO;
   const merged = {
-    academic: AUTO.academic,
-    github: AUTO.github,
-    coding: AUTO.coding,
+    academic: autoReset.includes("academic") ? RAW.academic : AUTO.academic,
+    github: autoReset.includes("github") ? RAW.github : AUTO.github,
+    coding: autoReset.includes("coding") ? RAW.coding : AUTO.coding,
     internship: incoming.internship ?? student.scoreInternship,
     certifications: incoming.certifications ?? student.scoreCertifications,
     projects: incoming.projects ?? student.scoreProjects,
@@ -97,6 +108,14 @@ export async function PATCH(
     membership: incoming.membership ?? student.scoreMembership,
     shl: incoming.shl ?? student.scoreShl,
   };
+  // Super admin explicitly entered an auto component → apply it and flag the
+  // override so future rescrapes/recalculations keep this value until the
+  // super admin clears it (autoReset below).
+  if (user.isSuperAdmin) {
+    if (incoming.academic !== undefined) merged.academic = incoming.academic;
+    if (incoming.github !== undefined) merged.github = incoming.github;
+    if (incoming.coding !== undefined) merged.coding = incoming.coding;
+  }
   const clamped = clampScores(merged);
 
   const updated = await prisma.student.update({
@@ -105,6 +124,12 @@ export async function PATCH(
       scoreAcademic: clamped.academic,
       scoreGithub: clamped.github,
       scoreCoding: clamped.coding,
+      academicOverridden: user.isSuperAdmin && incoming.academic !== undefined ? true
+        : autoReset.includes("academic") ? false : student.academicOverridden,
+      githubOverridden: user.isSuperAdmin && incoming.github !== undefined ? true
+        : autoReset.includes("github") ? false : student.githubOverridden,
+      codingOverridden: user.isSuperAdmin && incoming.coding !== undefined ? true
+        : autoReset.includes("coding") ? false : student.codingOverridden,
       scoreInternship: clamped.internship,
       scoreCertifications: clamped.certifications,
       scoreProjects: clamped.projects,

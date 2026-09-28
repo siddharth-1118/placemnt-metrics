@@ -99,8 +99,12 @@ export function suggestCodingScore(l?: LeetcodeScrapedData | null): number {
  * backfill both use this so the automatic components always agree.
  */
 export async function autoScoresFor(
-  studentId: string
+  studentId: string,
+  /** false → ignore super-admin overrides and always return the raw
+   *  calculated suggestion (used when clearing an override). */
+  opts: { respectOverrides?: boolean } = {}
 ): Promise<{ academic: number; github: number; coding: number }> {
+  const respect = opts.respectOverrides !== false;
   const { prisma } = await import("@/lib/prisma");
   const student = await prisma.student.findUnique({
     where: { id: studentId },
@@ -108,8 +112,13 @@ export async function autoScoresFor(
   });
   if (!student) return { academic: 0, github: 0, coding: 0 };
 
-  const academic =
-    student.tenthPercent > 0 || student.twelfthPercent > 0 || student.cgpa > 0
+  // Super-admin manual overrides win when respected: a flagged component
+  // keeps its stored score until the super admin clears the override —
+  // re-scrapes and recalculations never touch it.
+  const useOverride = (flag: boolean) => respect && flag;
+  const academic = useOverride(student.academicOverridden)
+    ? student.scoreAcademic
+    : student.tenthPercent > 0 || student.twelfthPercent > 0 || student.cgpa > 0
       ? suggestAcademicScore(student.tenthPercent, student.twelfthPercent, student.cgpa)
       : 0;
 
@@ -118,11 +127,13 @@ export async function autoScoresFor(
   try {
     const gh = student.scrapes.find((s) => s.platform === "GITHUB");
     const lc = student.scrapes.find((s) => s.platform === "LEETCODE");
-    if (gh?.status === "SUCCESS" && gh.dataJson) github = suggestGithubScore(JSON.parse(gh.dataJson));
-    if (lc?.status === "SUCCESS" && lc.dataJson) coding = suggestCodingScore(JSON.parse(lc.dataJson));
+    if (!useOverride(student.githubOverridden) && gh?.status === "SUCCESS" && gh.dataJson) github = suggestGithubScore(JSON.parse(gh.dataJson));
+    if (!useOverride(student.codingOverridden) && lc?.status === "SUCCESS" && lc.dataJson) coding = suggestCodingScore(JSON.parse(lc.dataJson));
   } catch {
     // Corrupt payloads → zero; a re-scrape fills them back in.
   }
+  if (useOverride(student.githubOverridden)) github = student.scoreGithub;
+  if (useOverride(student.codingOverridden)) coding = student.scoreCoding;
   return { academic, github, coding };
 }
 
@@ -155,9 +166,10 @@ export async function applyAutoPlatformScores(studentId: string): Promise<void> 
   const clamped = clampScores({
     academic: student.scoreAcademic,
     // GitHub & coding are ALWAYS derived from the latest scrape payloads —
-    // they are system-calculated components, never coordinator-entered.
-    github: suggestGithubScore(ghData),
-    coding: suggestCodingScore(lcData),
+    // they are system-calculated components, never coordinator-entered —
+    // EXCEPT when the super admin has manually overridden them.
+    github: student.githubOverridden ? student.scoreGithub : suggestGithubScore(ghData),
+    coding: student.codingOverridden ? student.scoreCoding : suggestCodingScore(lcData),
     internship: student.scoreInternship,
     certifications: student.scoreCertifications,
     projects: student.scoreProjects,

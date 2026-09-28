@@ -73,6 +73,9 @@ export function toDto(
   proofUrls: string;
   status: string;
   coordinatorNote: string | null;
+  academicOverridden: boolean;
+  githubOverridden: boolean;
+  codingOverridden: boolean;
   scoreAcademic: number;
   scoreGithub: number;
   scoreCoding: number;
@@ -131,6 +134,11 @@ export function toDto(
     proofUrls,
     status: s.status === "VERIFIED" ? "VERIFIED" : "PENDING",
     coordinatorNote: s.coordinatorNote,
+    autoOverrides: {
+      academic: s.academicOverridden,
+      github: s.githubOverridden,
+      coding: s.codingOverridden,
+    },
     documents: (documentsArg ?? s.documents ?? []).map(docToDto),
     projectLinks: (linksArg ?? s.projectLinks ?? []).map(linkToDto),
     scores: clampScores({

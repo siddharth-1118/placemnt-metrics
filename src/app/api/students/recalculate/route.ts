@@ -27,8 +27,9 @@ export async function POST() {
   const details: { registerNumber: string; academic: number; total: number }[] = [];
 
   for (const s of students) {
-    // The three automatic components are always recomputed from source data
-    // (marks band tables + latest scrapes) — never coordinator-entered.
+    // The three automatic components are recomputed from source data (marks
+    // band tables + latest scrapes) — except components the super admin has
+    // manually overridden; those keep their stored value.
     const auto = await autoScoresFor(s.id);
 
     const clamped = clampScores({
