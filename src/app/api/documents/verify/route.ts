@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireScorer, hasScope } from "@/lib/auth";
 import { docCategoryScope, linkCategoryScope } from "@/lib/scopes";
+import { capturePortalArchive } from "@/lib/auto-archive";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,11 @@ export async function PATCH(req: Request) {
     if (!link) return NextResponse.json({ error: "Link not found" }, { status: 404 });
     await prisma.projectLink.update({ where: { id }, data });
   }
+
+  capturePortalArchive(
+    "VERIFICATION",
+    `Verification update (${status}) on ${kind} by ${user.fullName}`
+  ).catch(console.error);
 
   return NextResponse.json({ ok: true });
 }

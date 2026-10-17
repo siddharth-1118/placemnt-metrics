@@ -12,6 +12,7 @@ import {
   filterStudentDtoForUser,
 } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
+import { capturePortalArchive } from "@/lib/auto-archive";
 import type { StudentDto } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -276,6 +277,12 @@ export async function POST(req: Request) {
     where: { id: student.id },
     include: { scrapes: true, documents: true, projectLinks: true },
   });
+
+  // Preserve an isolated snapshot in separate archive storage
+  capturePortalArchive(
+    "STUDENT_UPDATE",
+    `Student submission: ${student.fullName} (${student.registerNumber})`
+  ).catch(console.error);
 
   return NextResponse.json(
     { student: toDto(fresh ?? student), message: "Submission received — coding profiles scraped." },

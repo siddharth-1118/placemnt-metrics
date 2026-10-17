@@ -6,6 +6,8 @@ import { ResetRequestsPanel } from "@/components/dashboard/reset-requests";
 import { SubmissionsToggle } from "@/components/dashboard/submissions-toggle";
 import { CoordinatorsAdmin } from "@/components/dashboard/coordinators-admin";
 import { DatabaseBackupPanel } from "@/components/dashboard/backup-panel";
+import { PortalArchivesPanel } from "@/components/dashboard/archives-panel";
+import { ensureDailyArchive } from "@/lib/auto-archive";
 import { GraduationCap } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -18,6 +20,11 @@ export default async function CoordinatorDashboardPage() {
   if (!user) redirect("/login");
   // Coordinators without any evaluation permission are kept out too.
   if (!user.canViewSubmissions) redirect("/my-submission");
+
+  // Ensure automated daily snapshot is preserved
+  if (user.isSuperAdmin) {
+    ensureDailyArchive().catch(console.error);
+  }
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
@@ -45,6 +52,7 @@ export default async function CoordinatorDashboardPage() {
 
       {user.isSuperAdmin && (
         <div className="mb-6 space-y-6">
+          <PortalArchivesPanel />
           <DatabaseBackupPanel />
           <SubmissionsToggle />
           <CoordinatorsAdmin />

@@ -12,6 +12,7 @@ import {
   resolveUploadMime,
   sniffUploadMime,
 } from "@/lib/categories";
+import { capturePortalArchive } from "@/lib/auto-archive";
 
 export const dynamic = "force-dynamic";
 
@@ -243,6 +244,7 @@ async function multipartUpload(req: Request, studentId: string, requesterIsEvalu
       where: { id: docId },
       data: { fileName: file.name.slice(0, 200), note },
     });
+    capturePortalArchive("STUDENT_UPDATE", `Document uploaded: ${file.name}`).catch(console.error);
     return NextResponse.json(
       { document: redactReviewer(docToDto(doc), requesterIsEvaluator) },
       { status: 201 }
@@ -294,6 +296,8 @@ export async function DELETE(req: Request) {
 
   await prisma.document.delete({ where: { id } });
   await deleteDocument(doc.studentId, doc.id);
+
+  capturePortalArchive("STUDENT_UPDATE", `Document removed: ${doc.fileName}`).catch(console.error);
 
   if (isEvaluator && doc.studentId !== user.id) {
     await notify({

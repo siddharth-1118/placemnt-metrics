@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireScorer } from "@/lib/auth";
 import { suggestAcademicScore, clampScores, assignRanks, autoScoresFor } from "@/lib/score";
+import { capturePortalArchive } from "@/lib/auto-archive";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +68,13 @@ export async function POST() {
   }
 
   await assignRanks();
+
+  if (updated > 0) {
+    capturePortalArchive(
+      "RECALCULATION",
+      `Global score recalculation: updated ${updated} student(s)`
+    ).catch(console.error);
+  }
 
   return NextResponse.json({
     ok: true,

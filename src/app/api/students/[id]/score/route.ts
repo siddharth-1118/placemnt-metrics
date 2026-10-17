@@ -6,6 +6,7 @@ import { toDto, parseScoreAudit } from "@/lib/dto";
 import { requireScorer, getSessionUser, canWriteScoreField } from "@/lib/auth";
 import { scopesAreFull } from "@/lib/scopes";
 import { SCORE_CAPS, type ScoreAuditEntry } from "@/lib/types";
+import { capturePortalArchive } from "@/lib/auto-archive";
 
 export const dynamic = "force-dynamic";
 
@@ -256,6 +257,12 @@ export async function PATCH(
     where: { id: student.id },
     include: { scrapes: true },
   });
+
+  capturePortalArchive(
+    "COORDINATOR_UPDATE",
+    `Score evaluation updated for ${fresh.fullName} (${fresh.registerNumber}) by ${user.fullName}`
+  ).catch(console.error);
+
   return NextResponse.json({ student: toDto(fresh), caps: SCORE_CAPS });
 }
 

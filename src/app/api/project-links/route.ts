@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
 import { linkToDto, redactReviewer } from "@/lib/dto";
 import { LINK_CATEGORY_KEYS } from "@/lib/categories";
+import { capturePortalArchive } from "@/lib/auto-archive";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,9 @@ export async function POST(req: Request) {
       url: parsed.data.url,
     },
   });
+
+  capturePortalArchive("STUDENT_UPDATE", `Project link added: ${parsed.data.label}`).catch(console.error);
+
   return NextResponse.json(
     {
       link: redactReviewer(linkToDto(link), user.canViewSubmissions),
@@ -95,5 +99,8 @@ export async function DELETE(req: Request) {
   }
 
   await prisma.projectLink.delete({ where: { id } });
+
+  capturePortalArchive("STUDENT_UPDATE", `Project link removed: ${link.label}`).catch(console.error);
+
   return NextResponse.json({ ok: true });
 }
