@@ -23,6 +23,7 @@ yarn-error.log*
 .env*.local
 
 # local sqlite database
+dev.db
 /prisma/dev.db
 /prisma/dev.db-journal
 

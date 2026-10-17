@@ -12,6 +12,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:use": "tsx scripts/switch-db.ts",
     "db:studio": "prisma studio",
+    "metrics:export": "python scripts/scrape_and_export_metrics.py",
     "postinstall": "node scripts/prepare-prisma.js && prisma generate"
   },
   "prisma": {
