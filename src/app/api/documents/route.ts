@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
-import { docToDto } from "@/lib/dto";
+import { docToDto, redactReviewer } from "@/lib/dto";
 import { putDocument, deleteDocument, createSignedDocumentUpload } from "@/lib/storage";
 import { notify } from "@/lib/notify";
 import {
   DOC_CATEGORY_KEYS,
   UPLOAD_MAX_BYTES,
   UPLOAD_MIME_TYPES,
+  resolveUploadMime,
+  sniffUploadMime,
 } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
@@ -20,11 +22,40 @@ function validateCategory(category: string): NextResponse | null {
   return null;
 }
 
+function mimeError(): NextResponse {
+  return NextResponse.json({ error: "Only PDF, JPG, PNG or WEBP files are accepted" }, { status: 415 });
+}
+
+/** `mime` must already be resolved via resolveUploadMime/sniffUploadMime. */
 function validateMime(mime: string): NextResponse | null {
-  if (!UPLOAD_MIME_TYPES.includes(mime as (typeof UPLOAD_MIME_TYPES)[number])) {
-    return NextResponse.json({ error: "Only PDF, JPG, PNG or WEBP files are accepted" }, { status: 415 });
-  }
+  if (!UPLOAD_MIME_TYPES.includes(mime as (typeof UPLOAD_MIME_TYPES)[number])) return mimeError();
   return null;
+}
+
+/**
+ * A VERIFIED document freezes its section for the student: no new uploads in
+ * that category until a coordinator deletes the verified proof (they are
+ * notified to re-upload). Evaluators bypass this so they can still repair
+ * data during review.
+ */
+async function verifiedSectionLock(
+  studentId: string,
+  category: string,
+  requesterIsEvaluator: boolean
+): Promise<NextResponse | null> {
+  if (requesterIsEvaluator) return null;
+  const verified = await prisma.document.findFirst({
+    where: { studentId, category, status: "VERIFIED" },
+    select: { id: true },
+  });
+  if (!verified) return null;
+  return NextResponse.json(
+    {
+      error:
+        "A coordinator already verified a document in this section — it is locked. Ask your coordinator if it must be replaced.",
+    },
+    { status: 423 }
+  );
 }
 
 function validateSize(size: number): NextResponse | null {
@@ -84,13 +115,13 @@ export async function POST(req: Request) {
 
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    return signedUploadHandshake(req, student.id);
+    return signedUploadHandshake(req, student.id, isEvaluatorUser);
   }
-  return multipartUpload(req, student.id);
+  return multipartUpload(req, student.id, isEvaluatorUser);
 }
 
 /** Mode 1: validate metadata, create the row, hand back a signed upload URL. */
-async function signedUploadHandshake(req: Request, studentId: string) {
+async function signedUploadHandshake(req: Request, studentId: string, requesterIsEvaluator: boolean) {
   let body: { category?: unknown; note?: unknown; fileName?: unknown; fileSize?: unknown; fileType?: unknown };
   try {
     body = await req.json();
@@ -102,7 +133,15 @@ async function signedUploadHandshake(req: Request, studentId: string) {
   const invalid = validateCategory(category);
   if (invalid) return invalid;
 
-  const mime = String(body.fileType ?? "application/octet-stream");
+  const lockedSection = await verifiedSectionLock(studentId, category, requesterIsEvaluator);
+  if (lockedSection) return lockedSection;
+
+  const fileName = String(body.fileName ?? "document").slice(0, 200);
+  // Browsers report the non-standard "image/jpg" or an empty type for some
+  // real .jpg/.png files — resolve it (type → alias → extension) instead of
+  // rejecting the upload.
+  const mime = resolveUploadMime(String(body.fileType ?? ""), fileName);
+  if (!mime) return mimeError(); // also narrows `mime` to a supported type
   const invalidMime = validateMime(mime);
   if (invalidMime) return invalidMime;
 
@@ -112,7 +151,6 @@ async function signedUploadHandshake(req: Request, studentId: string) {
 
   const noteRaw = typeof body.note === "string" ? body.note : "";
   const note = noteRaw.trim() ? noteRaw.trim().slice(0, 300) : null;
-  const fileName = String(body.fileName ?? "document").slice(0, 200);
 
   // Create the row first — its id is the storage key. Rolled back on failure
   // so no Document ever exists without a backing file.
@@ -135,7 +173,9 @@ async function signedUploadHandshake(req: Request, studentId: string) {
       upload: "direct",
       documentId: docId,
       signedUrl: signed.signedUrl,
-      document: doc ? docToDto(doc) : null,
+      // Reviewer identity is evaluator-only (a fresh upload is always
+      // PENDING, but keep the rule applied uniformly across responders).
+      document: doc ? redactReviewer(docToDto(doc), requesterIsEvaluator) : null,
     });
   } catch (err) {
     await prisma.document.delete({ where: { id: docId } }).catch(() => undefined);
@@ -147,7 +187,7 @@ async function signedUploadHandshake(req: Request, studentId: string) {
 }
 
 /** Mode 2: classic multipart upload (file bytes through the server). */
-async function multipartUpload(req: Request, studentId: string) {
+async function multipartUpload(req: Request, studentId: string, requesterIsEvaluator: boolean) {
   let form: FormData;
   try {
     form = await req.formData();
@@ -159,6 +199,9 @@ async function multipartUpload(req: Request, studentId: string) {
   const invalid = validateCategory(category);
   if (invalid) return invalid;
 
+  const lockedSection = await verifiedSectionLock(studentId, category, requesterIsEvaluator);
+  if (lockedSection) return lockedSection;
+
   const noteRaw = form.get("note");
   const note = typeof noteRaw === "string" && noteRaw.trim() ? noteRaw.trim().slice(0, 300) : null;
 
@@ -169,11 +212,14 @@ async function multipartUpload(req: Request, studentId: string) {
   const invalidSize = validateSize(file.size);
   if (invalidSize) return invalidSize;
 
-  const mime = file.type || "application/octet-stream";
+  const buffer = Buffer.from(await file.arrayBuffer());
+  // Resolve the MIME from what the browser reported, then the file name
+  // extension, then the file's magic bytes — so images with an empty or
+  // non-standard type still upload instead of dying with a 415.
+  const mime = resolveUploadMime(file.type, file.name) ?? sniffUploadMime(buffer);
+  if (!mime) return mimeError(); // also narrows `mime` to a supported type
   const invalidMime = validateMime(mime);
   if (invalidMime) return invalidMime;
-
-  const buffer = Buffer.from(await file.arrayBuffer());
 
   // Storage write FIRST (Supabase when configured, disk otherwise). If storage
   // is misconfigured and even the disk fallback fails, we fail the request —
@@ -190,7 +236,10 @@ async function multipartUpload(req: Request, studentId: string) {
       where: { id: docId },
       data: { fileName: file.name.slice(0, 200), note },
     });
-    return NextResponse.json({ document: docToDto(doc) }, { status: 201 });
+    return NextResponse.json(
+      { document: redactReviewer(docToDto(doc), requesterIsEvaluator) },
+      { status: 201 }
+    );
   } catch (err) {
     await prisma.document.delete({ where: { id: docId } }).catch(() => undefined);
     return NextResponse.json(

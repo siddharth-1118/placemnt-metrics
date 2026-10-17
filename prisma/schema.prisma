@@ -82,6 +82,18 @@ model Student {
   /// PENDING | VERIFIED
   status         String   @default("PENDING")
   coordinatorNote String?
+  /// Account that flipped this submission to VERIFIED ("Save & Verify
+  /// Candidate"). Cleared when it goes back to PENDING. EVALUATOR-ONLY:
+  /// student-facing responses never include who/when.
+  verifiedById   String?
+  verifiedByName String?
+  verifiedAt     DateTime?
+  /// JSON audit trail of score entry — one entry per actual change:
+  ///   { field, value, action: "entered" | "override" | "reset",
+  ///     byName, byId, at }
+  /// "who entered which marks, when" for the coordinator/super-admin audit
+  /// view. EVALUATOR-ONLY (stripped from every student-facing response).
+  scoreAudit    String   @default("[]")
 
   /// Secret token that scopes document download links (ids are guessable;
   /// the token makes stored files unguessable without auth complexity).
@@ -166,6 +178,12 @@ model Document {
   status     String   @default("PENDING")
   reviewedAt DateTime?
   reviewNote String?
+  /// Account that performed the review (coordinator / super admin).
+  /// Evaluator-only: never returned to students by student-facing APIs.
+  reviewedById   String?
+  /// Denormalized display name of the reviewer, so the audit trail survives
+  /// coordinator account changes. Evaluator-only.
+  reviewedByName String?
 
   createdAt DateTime @default(now())
 
@@ -226,6 +244,11 @@ model ProjectLink {
   status     String   @default("PENDING")
   reviewedAt DateTime?
   reviewNote String?
+  /// Account that performed the review (coordinator / super admin).
+  /// Evaluator-only: never returned to students by student-facing APIs.
+  reviewedById   String?
+  /// Denormalized display name of the reviewer — evaluator-only.
+  reviewedByName String?
 
   createdAt DateTime @default(now())
 

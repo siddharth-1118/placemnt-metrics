@@ -1,5 +1,26 @@
 import { clampScores } from "@/lib/score";
-import type { StudentDto } from "@/lib/types";
+import type { ScoreAuditEntry, StudentDto } from "@/lib/types";
+
+/**
+ * Parse the Student.scoreAudit JSON column into typed entries (newest first
+ * as stored). Corrupt / legacy payloads parse to [] instead of throwing.
+ */
+export function parseScoreAudit(raw: string | null | undefined): ScoreAuditEntry[] {
+  try {
+    const parsed = JSON.parse(raw || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (e): e is ScoreAuditEntry =>
+        typeof e === "object" &&
+        e !== null &&
+        typeof (e as { field?: unknown }).field === "string" &&
+        typeof (e as { byName?: unknown }).byName === "string" &&
+        typeof (e as { at?: unknown }).at === "string"
+    );
+  } catch {
+    return [];
+  }
+}
 
 interface DocRow {
   id: string;
@@ -11,6 +32,8 @@ interface DocRow {
   status: string;
   reviewedAt: Date | null;
   reviewNote: string | null;
+  reviewedById?: string | null;
+  reviewedByName?: string | null;
   createdAt: Date;
 }
 
@@ -22,7 +45,30 @@ interface LinkRow {
   status: string;
   reviewedAt: Date | null;
   reviewNote: string | null;
+  reviewedById?: string | null;
+  reviewedByName?: string | null;
   createdAt: Date;
+}
+
+/**
+ * WHO reviewed an item is evaluator-only information. Student-facing
+ * responses must call redactReviewers(..., false) so the reviewer's name
+ * never leaves the server for a student, whatever route built the DTO.
+ */
+export type ReviewerBearing = { reviewedByName: string | null };
+
+export function redactReviewer<T extends ReviewerBearing>(
+  dto: T,
+  canSeeReviewer: boolean
+): T {
+  return canSeeReviewer ? dto : { ...dto, reviewedByName: null };
+}
+
+export function redactReviewers<T extends ReviewerBearing>(
+  list: T[],
+  canSeeReviewer: boolean
+): T[] {
+  return canSeeReviewer ? list : list.map((d) => ({ ...d, reviewedByName: null }));
 }
 
 export function docToDto(d: DocRow): StudentDto["documents"][number] {
@@ -36,6 +82,7 @@ export function docToDto(d: DocRow): StudentDto["documents"][number] {
     status: d.status === "VERIFIED" ? "VERIFIED" : d.status === "REJECTED" ? "REJECTED" : "PENDING",
     reviewedAt: d.reviewedAt?.toISOString() ?? null,
     reviewNote: d.reviewNote,
+    reviewedByName: d.reviewedByName ?? null,
     createdAt: d.createdAt.toISOString(),
     // Session-authenticated (owner or evaluator); token param also accepted.
     fileUrl: `/api/documents/${d.id}/file`,
@@ -51,6 +98,7 @@ export function linkToDto(l: LinkRow): StudentDto["projectLinks"][number] {
     status: l.status === "VERIFIED" ? "VERIFIED" : l.status === "REJECTED" ? "REJECTED" : "PENDING",
     reviewedAt: l.reviewedAt?.toISOString() ?? null,
     reviewNote: l.reviewNote,
+    reviewedByName: l.reviewedByName ?? null,
     createdAt: l.createdAt.toISOString(),
   };
 }
@@ -73,6 +121,10 @@ export function toDto(
   proofUrls: string;
   status: string;
   coordinatorNote: string | null;
+  verifiedById?: string | null;
+  verifiedByName?: string | null;
+  verifiedAt?: Date | null;
+  scoreAudit?: string;
   academicOverridden: boolean;
   githubOverridden: boolean;
   codingOverridden: boolean;
@@ -134,6 +186,9 @@ export function toDto(
     proofUrls,
     status: s.status === "VERIFIED" ? "VERIFIED" : "PENDING",
     coordinatorNote: s.coordinatorNote,
+    verifiedByName: s.verifiedByName ?? null,
+    verifiedAt: s.verifiedAt?.toISOString() ?? null,
+    scoreAudit: parseScoreAudit(s.scoreAudit),
     autoOverrides: {
       academic: s.academicOverridden,
       github: s.githubOverridden,

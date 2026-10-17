@@ -45,6 +45,10 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
     role: string;
     evaluatorAssigned: boolean;
   } | null>(null);
+  /** True once an existing submission has been loaded into the form. */
+  const [hasProfile, setHasProfile] = useState(false);
+  /** True when academic marks/marksheets have already been verified by a coordinator. */
+  const [isAcademicVerified, setIsAcademicVerified] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/login")
@@ -63,6 +67,49 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
             email: b.user.email,
           }));
         }
+      })
+      .catch(() => undefined);
+
+    // Editing an existing profile: show EVERYTHING already on record so the
+    // student edits what they have instead of re-typing a blank form.
+    // (Email and register number come back too, but they are locked below.)
+    fetch("/api/me/submission")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => {
+        const s = b?.student;
+        if (!s) return;
+        const num = (v: unknown, prev: string) =>
+          v === null || v === undefined || v === "" ? prev : String(v);
+        setHasProfile(true);
+
+        const acVer =
+          s.status === "VERIFIED" ||
+          (Array.isArray(s.documents) &&
+            s.documents.some(
+              (d: { category: string; status: string }) =>
+                [
+                  "TENTH_MARKSHEET",
+                  "TWELFTH_MARKSHEET",
+                  "SEM1_MARKSHEET",
+                  "SEM2_MARKSHEET",
+                  "CGPA_MARKSHEET",
+                ].includes(d.category) && d.status === "VERIFIED"
+            ));
+        setIsAcademicVerified(!!acVer);
+
+        setForm((f) => ({
+          ...f,
+          registerNumber: s.registerNumber || f.registerNumber,
+          fullName: s.fullName || f.fullName || "",
+          email: s.email || f.email,
+          facultyAdvisor: s.facultyAdvisor ?? "",
+          tenthPercent: num(s.tenthPercent, f.tenthPercent),
+          twelfthPercent: num(s.twelfthPercent, f.twelfthPercent),
+          sgpaSem1: num(s.sgpaSem1, f.sgpaSem1),
+          sgpaSem2: num(s.sgpaSem2, f.sgpaSem2),
+          githubUrl: s.githubUrl ?? "",
+          leetcodeUrl: s.leetcodeUrl ?? "",
+        }));
       })
       .catch(() => undefined);
   }, []);
@@ -289,8 +336,15 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. RA2211003010001"
               value={form.registerNumber}
               onChange={set("registerNumber")}
-              className="font-mono uppercase text-xs h-8"
+              readOnly={hasProfile || !!sessionInfo}
+              title={hasProfile || !!sessionInfo ? "Locked — register number cannot be changed" : undefined}
+              className={`font-mono uppercase text-xs h-8 ${hasProfile || !!sessionInfo ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
+            {(hasProfile || !!sessionInfo) && (
+              <p className="mt-1 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+                🔒 Locked — University register number is a permanent identifier and cannot be changed.
+              </p>
+            )}
           </Field>
 
           <Field label="Full Name *" error={errors.fullName}>
@@ -308,9 +362,15 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="you@srmist.edu.in"
               value={form.email}
               onChange={set("email")}
-              readOnly={!!sessionInfo}
-              className={`text-xs h-8 ${sessionInfo ? "opacity-75 cursor-not-allowed" : ""}`}
+              readOnly={hasProfile || !!sessionInfo}
+              title={hasProfile || !!sessionInfo ? "Locked — registered email cannot be changed" : undefined}
+              className={`text-xs h-8 ${hasProfile || !!sessionInfo ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
+            {(hasProfile || !!sessionInfo) && (
+              <p className="mt-1 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+                🔒 Locked — Official student email is locked to your account.
+              </p>
+            )}
           </Field>
 
           <Field label="Faculty Advisor (Optional)" error={errors.facultyAdvisor}>
@@ -334,6 +394,11 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
             <p className="mt-0.5 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
               Evaluated strictly on the 10-mark official placement academic standard.
             </p>
+            {isAcademicVerified && (
+              <p className="mt-1 text-[11px] font-semibold text-[#165b33] dark:text-[#78d69f]">
+                🔒 Verified by Coordinator — Marks are locked and cannot be edited. Contact your coordinator if a revision is needed.
+              </p>
+            )}
           </div>
           <span className="rounded border border-[#b8ddc4] bg-[#eaf4ed] px-2 py-0.5 text-xs font-semibold text-[#165b33] dark:border-[#215736] dark:bg-[#133822] dark:text-[#78d69f]">
             Estimated Academic Score: {estAcademicScore} / 10.0 M
@@ -354,7 +419,8 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. 95.0"
               value={form.tenthPercent}
               onChange={set("tenthPercent")}
-              className="text-xs h-8"
+              readOnly={isAcademicVerified}
+              className={`text-xs h-8 ${isAcademicVerified ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
           </Field>
 
@@ -371,7 +437,8 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. 94.0"
               value={form.twelfthPercent}
               onChange={set("twelfthPercent")}
-              className="text-xs h-8"
+              readOnly={isAcademicVerified}
+              className={`text-xs h-8 ${isAcademicVerified ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
           </Field>
 
@@ -388,7 +455,8 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. 8.75"
               value={form.sgpaSem1}
               onChange={set("sgpaSem1")}
-              className="text-xs h-8"
+              readOnly={isAcademicVerified}
+              className={`text-xs h-8 ${isAcademicVerified ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
           </Field>
 
@@ -405,7 +473,8 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. 9.10"
               value={form.sgpaSem2}
               onChange={set("sgpaSem2")}
-              className="text-xs h-8"
+              readOnly={isAcademicVerified}
+              className={`text-xs h-8 ${isAcademicVerified ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
           </Field>
         </div>

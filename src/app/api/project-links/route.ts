@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
-import { linkToDto } from "@/lib/dto";
+import { linkToDto, redactReviewer } from "@/lib/dto";
 import { LINK_CATEGORY_KEYS } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
@@ -62,7 +62,12 @@ export async function POST(req: Request) {
       url: parsed.data.url,
     },
   });
-  return NextResponse.json({ link: linkToDto(link) }, { status: 201 });
+  return NextResponse.json(
+    {
+      link: redactReviewer(linkToDto(link), user.canViewSubmissions),
+    },
+    { status: 201 }
+  );
 }
 
 /** DELETE /api/project-links?id=<linkId> — owner (or evaluator) removes a link. */

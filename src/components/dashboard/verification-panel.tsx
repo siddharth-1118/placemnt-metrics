@@ -18,6 +18,29 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="warning">Pending</Badge>;
 }
 
+/**
+ * Evaluator-only attribution: WHO performed the review.
+ * Students never receive the reviewer's name (stripped server-side), so this
+ * badge is only ever rendered inside coordinator / super-admin views.
+ */
+function ReviewedBy({
+  status,
+  reviewedByName,
+}: {
+  status: string;
+  reviewedByName: string | null;
+}) {
+  if (status === "PENDING" || !reviewedByName) return null;
+  return (
+    <span
+      className="text-[11px] text-muted-foreground"
+      title={`${status === "VERIFIED" ? "Verified" : "Rejected"} on review`}
+    >
+      {status === "VERIFIED" ? "Verified by" : "Rejected by"} {reviewedByName}
+    </span>
+  );
+}
+
 async function reviewApi(
   kind: "document" | "link",
   id: string,
@@ -140,6 +163,7 @@ export function VerificationPanel({
                     <span className="shrink-0 text-xs text-muted-foreground">{docCategoryLabel(d.category)}</span>
                     <span className="shrink-0 text-[11px] text-muted-foreground">{fmtSize(d.sizeBytes)}</span>
                     <StatusBadge status={d.status} />
+                    <ReviewedBy status={d.status} reviewedByName={d.reviewedByName ?? null} />
                     <div className="flex shrink-0 gap-1">
                       <a
                         href={d.fileUrl}
@@ -213,6 +237,7 @@ export function VerificationPanel({
                   </a>
                   <span className="shrink-0 text-xs text-muted-foreground">{linkCategoryLabel(l.category)}</span>
                   <StatusBadge status={l.status} />
+                  <ReviewedBy status={l.status} reviewedByName={l.reviewedByName ?? null} />
                   <div className="flex shrink-0 gap-1">
                     {canScore && (
                       <Button

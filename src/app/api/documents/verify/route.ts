@@ -53,6 +53,10 @@ export async function PATCH(req: Request) {
     status,
     reviewedAt: status === "PENDING" ? null : now,
     reviewNote: reviewNote?.trim() || null,
+    // Record WHO performed the review. Visible to evaluators / the super
+    // admin only — student-facing responses strip these fields.
+    reviewedById: status === "PENDING" ? null : user.id,
+    reviewedByName: status === "PENDING" ? null : user.fullName,
   };
 
   if (kind === "document") {

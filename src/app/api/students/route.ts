@@ -137,7 +137,7 @@ export async function POST(req: Request) {
   // anonymous submissions may never touch an existing account's email.
   const session = await getSessionUser();
   const sessionIsEvaluator = !!session?.canViewSubmissions;
-  const existing = await prisma.student.findUnique({ where: { registerNumber: d.registerNumber } });
+  let existing = await prisma.student.findUnique({ where: { registerNumber: d.registerNumber } });
   const existingByEmail = await prisma.student.findUnique({ where: { email: d.email } });
 
   const isOwnEmail = session !== null && session.email === d.email;
@@ -161,10 +161,69 @@ export async function POST(req: Request) {
     );
   }
 
+  // Locked identity: once a profile exists, its email and register number
+  // are no longer editable from the form. Whatever the client sent, the
+  // stored pair is written back — the record keeps the key it was created
+  // with (the client also renders both fields read-only).
+  //
+  // A signed-in STUDENT can therefore only ever edit their own submission:
+  // a changed identity can never spawn a second profile under their session.
+  // Evaluators keep the original behaviour (their own profile only — the
+  // guard above already rejects anyone else's register number).
+  const ownRecord = session
+    ? session.role === "STUDENT" && !session.canViewSubmissions
+      ? await prisma.student.findUnique({
+          where: { id: session.id },
+          select: { id: true, email: true, registerNumber: true },
+        })
+      : existing && existing.id === session.id
+        ? existing
+        : existingByEmail && existingByEmail.id === session.id
+          ? existingByEmail
+          : null
+    : null;
+  if (ownRecord) {
+    data.email = ownRecord.email;
+    data.registerNumber = ownRecord.registerNumber;
+    if (existing?.id !== ownRecord.id) {
+      // The payload carried a different identity — still write to the
+      // student's own record instead of creating a new one.
+      existing = await prisma.student.findUnique({ where: { id: ownRecord.id } });
+    }
+  }
+
   // Default academic score from marks (coordinator-adjustable later).
   // Computed for EVERY submission path — including a signed-in coordinator
   // submitting their own placement profile under their account email.
   const academic = suggestAcademicScore(d.tenthPercent, d.twelfthPercent, cgpa);
+  let academicScoreToSet = academic;
+
+  if (existing) {
+    const verifiedAcademicDocs = await prisma.document.count({
+      where: {
+        studentId: existing.id,
+        category: {
+          in: [
+            "TENTH_MARKSHEET",
+            "TWELFTH_MARKSHEET",
+            "SEM1_MARKSHEET",
+            "SEM2_MARKSHEET",
+            "CGPA_MARKSHEET",
+          ],
+        },
+        status: "VERIFIED",
+      },
+    });
+    if (verifiedAcademicDocs > 0 && !isEvaluator) {
+      // Academic records are verified by coordinator — retain stored verified marks
+      data.tenthPercent = existing.tenthPercent;
+      data.twelfthPercent = existing.twelfthPercent;
+      data.sgpaSem1 = existing.sgpaSem1;
+      data.sgpaSem2 = existing.sgpaSem2;
+      data.cgpa = existing.cgpa;
+      academicScoreToSet = existing.scoreAcademic;
+    }
+  }
 
   let student;
   if (existing) {
@@ -172,7 +231,17 @@ export async function POST(req: Request) {
     // endpoint is public, so allowing it would let anyone take over an account.
     student = await prisma.student.update({
       where: { id: existing.id },
-      data: { ...data, scoreAcademic: academic, status: "PENDING" },
+      data: {
+        ...data,
+        scoreAcademic: academicScoreToSet,
+        // A resubmission invalidates the previous sign-off: the profile
+        // goes back to pending AND the old verifier stamp is cleared (no
+        // stale "verified by" attribution on an unverified record).
+        status: "PENDING",
+        verifiedById: null,
+        verifiedByName: null,
+        verifiedAt: null,
+      },
       include: { scrapes: true },
     });
   } else if (isOwnEmail && existingByEmail) {

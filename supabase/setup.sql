@@ -59,6 +59,10 @@ CREATE TABLE IF NOT EXISTS "Student" (
     "claimablePassword" BOOLEAN NOT NULL DEFAULT false,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
     "coordinatorNote" TEXT,
+    "verifiedById" TEXT,
+    "verifiedByName" TEXT,
+    "verifiedAt" TIMESTAMP(3),
+    "scoreAudit" TEXT NOT NULL DEFAULT '[]',
     "uploadToken" TEXT NOT NULL,
     "scoreAcademic" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "scoreGithub" DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -103,6 +107,11 @@ ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreInhouse"        DOUBLE PREC
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreMembership"     DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreShl"            DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE "Student" DROP COLUMN IF EXISTS "scoreExtras";
+-- Who verified this submission + the per-section score-entry audit trail
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "verifiedById"   TEXT;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "verifiedByName" TEXT;
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "verifiedAt"     TIMESTAMP(3);
+ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "scoreAudit"     TEXT NOT NULL DEFAULT '[]';
 
 -- ---------------------------------------------------------------------
 -- 3. "ScrapeResult" / "Document" / "ProjectLink"
@@ -134,6 +143,8 @@ CREATE TABLE IF NOT EXISTS "Document" (
     "status" TEXT NOT NULL DEFAULT 'PENDING',
     "reviewedAt" TIMESTAMP(3),
     "reviewNote" TEXT,
+    "reviewedById" TEXT,
+    "reviewedByName" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Document_pkey" PRIMARY KEY ("id")
 );
@@ -150,9 +161,17 @@ CREATE TABLE IF NOT EXISTS "ProjectLink" (
     "status" TEXT NOT NULL DEFAULT 'PENDING',
     "reviewedAt" TIMESTAMP(3),
     "reviewNote" TEXT,
+    "reviewedById" TEXT,
+    "reviewedByName" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ProjectLink_pkey" PRIMARY KEY ("id")
 );
+
+-- Self-heal: reviewer identity columns (who verified each proof item).
+ALTER TABLE "Document"    ADD COLUMN IF NOT EXISTS "reviewedById"   TEXT;
+ALTER TABLE "Document"    ADD COLUMN IF NOT EXISTS "reviewedByName" TEXT;
+ALTER TABLE "ProjectLink" ADD COLUMN IF NOT EXISTS "reviewedById"   TEXT;
+ALTER TABLE "ProjectLink" ADD COLUMN IF NOT EXISTS "reviewedByName" TEXT;
 
 CREATE INDEX IF NOT EXISTS "ProjectLink_studentId_idx" ON "ProjectLink"("studentId");
 

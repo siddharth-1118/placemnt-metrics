@@ -32,11 +32,22 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!student) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
-  // Students viewing their own submission are unrestricted; scoped
-  // coordinators see only the evidence inside their assigned sections.
+  // Students viewing their own submission are unrestricted on THEIR data,
+  // but the reviewer/verifier identity and the score-entry audit are
+  // evaluator-only — never leaked back to the student, not even their own.
   const dto = toDto(student);
+  const redacted = isEvaluator
+    ? dto
+    : {
+        ...dto,
+        verifiedByName: null,
+        verifiedAt: null,
+        scoreAudit: [],
+        documents: dto.documents.map((d) => ({ ...d, reviewedByName: null })),
+        projectLinks: dto.projectLinks.map((l) => ({ ...l, reviewedByName: null })),
+      };
   return NextResponse.json({
-    student: isSelf ? dto : filterStudentDtoForUser(dto, user),
+    student: isSelf ? redacted : filterStudentDtoForUser(dto, user),
   });
 }
 

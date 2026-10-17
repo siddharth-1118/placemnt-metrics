@@ -20,6 +20,27 @@ type SortKey = "rank" | "totalScore" | "cgpa" | "name" | "registerNumber";
 type StatusFilter = "ALL" | "PENDING" | "VERIFIED";
 type ActiveSection = "STUDENTS" | "SCORES" | "MATRIX" | "REPORTS";
 
+export function getStudentReviewers(s: StudentDto): { finalVerifier: string | null; sectionReviewers: string[] } {
+  const finalVerifier = s.status === "VERIFIED" ? s.verifiedByName : null;
+  const reviewers = new Set<string>();
+  for (const a of s.scoreAudit ?? []) {
+    if (a.byName && a.action !== "auto" && a.byName !== finalVerifier) {
+      reviewers.add(a.byName);
+    }
+  }
+  for (const d of s.documents ?? []) {
+    if (d.reviewedByName && d.reviewedByName !== finalVerifier) {
+      reviewers.add(d.reviewedByName);
+    }
+  }
+  for (const l of s.projectLinks ?? []) {
+    if (l.reviewedByName && l.reviewedByName !== finalVerifier) {
+      reviewers.add(l.reviewedByName);
+    }
+  }
+  return { finalVerifier, sectionReviewers: Array.from(reviewers) };
+}
+
 export function Dashboard({
   canScore = true,
   /** Super admin — may view every section regardless of scopes. */
@@ -642,13 +663,62 @@ export function Dashboard({
                       </td>
                     )}
 
-                    {/* Status */}
+                    {/* Status — with WHO signed it off & which coordinators reviewed */}
                     <td>
-                      {s.status === "VERIFIED" ? (
-                        <Badge variant="success">Verified</Badge>
-                      ) : (
-                        <Badge variant="warning">Pending</Badge>
-                      )}
+                      {(() => {
+                        const { finalVerifier, sectionReviewers } = getStudentReviewers(s);
+                        return (
+                          <div className="space-y-1">
+                            {s.status === "VERIFIED" ? (
+                              <>
+                                <Badge variant="success">Verified</Badge>
+                                {finalVerifier && (
+                                  <div
+                                    className="text-[11px] font-medium leading-tight text-[#165b33] dark:text-[#78d69f]"
+                                    title={s.verifiedAt ? `Signed off ${new Date(s.verifiedAt).toLocaleString()}` : "Verifier of record"}
+                                  >
+                                    ✓ by {finalVerifier}
+                                  </div>
+                                )}
+                                {sectionReviewers.length > 0 && (
+                                  <div
+                                    className="text-[10px] leading-tight text-[#5c6470] dark:text-[#94a3b8]"
+                                    title={`Section reviewers: ${sectionReviewers.join(", ")}`}
+                                  >
+                                    Reviewers: {sectionReviewers.slice(0, 2).join(", ")}
+                                    {sectionReviewers.length > 2 ? ` +${sectionReviewers.length - 2}` : ""}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {sectionReviewers.length > 0 ? (
+                                  <>
+                                    <Badge variant="warning" className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300">
+                                      In Review
+                                    </Badge>
+                                    <div
+                                      className="text-[11px] leading-tight text-[#5c6470] dark:text-[#94a3b8]"
+                                      title={`Coordinators who reviewed sections: ${sectionReviewers.join(", ")}`}
+                                    >
+                                      Reviewed: <span className="font-medium text-[#1c2024] dark:text-white">{sectionReviewers.slice(0, 2).join(", ")}{sectionReviewers.length > 2 ? ` +${sectionReviewers.length - 2}` : ""}</span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Badge variant="outline" className="text-stone-500 border-stone-300 dark:border-stone-700">
+                                      Pending
+                                    </Badge>
+                                    <div className="text-[10px] text-[#5c6470] dark:text-[#94a3b8]">
+                                      Awaiting review
+                                    </div>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     {/* Matrix Score */}

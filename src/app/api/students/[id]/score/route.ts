@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { clampScores, assignRanks, autoScoresFor } from "@/lib/score";
-import { toDto } from "@/lib/dto";
+import { toDto, parseScoreAudit } from "@/lib/dto";
 import { requireScorer, getSessionUser, canWriteScoreField } from "@/lib/auth";
-import { SCORE_CAPS } from "@/lib/types";
+import { scopesAreFull } from "@/lib/scopes";
+import { SCORE_CAPS, type ScoreAuditEntry } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,105 @@ export async function PATCH(
   }
   const clamped = clampScores(merged);
 
+  // ── Audit trail: who entered which marks, and who verified the record ──
+  // Only actual CHANGES are recorded (re-saving an identical value adds no
+  // entry), so the list stays readable. Newest first, capped for safety.
+  const prevValues: Record<string, number> = {
+    academic: student.scoreAcademic,
+    github: student.scoreGithub,
+    coding: student.scoreCoding,
+    internship: student.scoreInternship,
+    certifications: student.scoreCertifications,
+    projects: student.scoreProjects,
+    fullstack: student.scoreFullstack,
+    hackathons: student.scoreHackathons,
+    inhouse: student.scoreInhouse,
+    membership: student.scoreMembership,
+    shl: student.scoreShl,
+  };
+  const now = new Date();
+  const AUTO_KEYS = ["academic", "github", "coding"] as const;
+  // `clamped` keys are ScoreBreakdown & "total"; the filter below drops
+  // "total", and this view keeps indexing `incoming` type-safe.
+  const incomingRec = incoming as Record<string, number | undefined>;
+  const newEntries: ScoreAuditEntry[] = (
+    Object.keys(clamped) as (keyof typeof clamped)[]
+  )
+    .filter((f) => f !== "total" && clamped[f] !== prevValues[f])
+    .map((f) => ({
+      field: f,
+      value: clamped[f],
+      // Classification: an auto component is only an "override" when a
+      // super admin actually typed it this request — otherwise its change is
+      // a system recalculation ("auto") or an explicit "reset".
+      action: !(AUTO_KEYS as readonly string[]).includes(f)
+        ? ("entered" as const)
+        : autoReset.includes(f as (typeof autoReset)[number])
+          ? ("reset" as const)
+          : incomingRec[f] !== undefined
+            ? ("override" as const)
+            : ("auto" as const),
+      byName: user.fullName,
+      at: now.toISOString(),
+    }));
+
+  // "Save & Verify Candidate" stamps WHO verified the whole submission;
+  // "Save as Pending" clears it; omitting `verify` leaves it untouched.
+  //
+  // Final verification is reserved for ALL-SECTION (full access) reviewers:
+  // a scoped coordinator verifies their own sections and enters their own
+  // marks, but the submission only turns green once remaining coordinators
+  // have verified all documents/links and a main coordinator or the super
+  // admin signs it off.
+  const verifyState = parsed.data.verify;
+  if (verifyState !== undefined && !user.isSuperAdmin && !scopesAreFull(user.permissionScopes)) {
+    return NextResponse.json(
+      {
+        error:
+          "Only all-sections (full access) main coordinators can change the final verification state — you can still save your section scores.",
+      },
+      { status: 403 }
+    );
+  }
+
+  if (verifyState === true) {
+    const pendingDocs = await prisma.document.count({
+      where: { studentId: student.id, status: "PENDING" },
+    });
+    if (pendingDocs > 0) {
+      return NextResponse.json(
+        {
+          error: `Cannot mark candidate as verified: ${pendingDocs} document proof(s) are still pending coordinator review. All documents must be verified or rejected before final approval.`,
+        },
+        { status: 422 }
+      );
+    }
+
+    const pendingLinks = await prisma.projectLink.count({
+      where: { studentId: student.id, status: "PENDING" },
+    });
+    if (pendingLinks > 0) {
+      return NextResponse.json(
+        {
+          error: `Cannot mark candidate as verified: ${pendingLinks} project link(s) are still pending coordinator review. All links must be verified or rejected before final approval.`,
+        },
+        { status: 422 }
+      );
+    }
+
+    newEntries.push({
+      field: "finalVerification",
+      value: clamped.total,
+      action: "verified",
+      byName: user.fullName,
+      at: now.toISOString(),
+    });
+  }
+
+  const scoreAudit = JSON.stringify(
+    [...newEntries, ...parseScoreAudit(student.scoreAudit)].slice(0, 200)
+  );
+
   const updated = await prisma.student.update({
     where: { id: student.id },
     data: {
@@ -139,7 +239,12 @@ export async function PATCH(
       scoreMembership: clamped.membership,
       scoreShl: clamped.shl,
       totalScore: clamped.total,
-      status: parsed.data.verify === undefined ? student.status : parsed.data.verify ? "VERIFIED" : "PENDING",
+      status: verifyState === undefined ? student.status : verifyState ? "VERIFIED" : "PENDING",
+      verifiedById: verifyState === undefined ? student.verifiedById : verifyState ? user.id : null,
+      verifiedByName:
+        verifyState === undefined ? student.verifiedByName : verifyState ? user.fullName : null,
+      verifiedAt: verifyState === undefined ? student.verifiedAt : verifyState ? now : null,
+      scoreAudit,
       coordinatorNote: parsed.data.coordinatorNote ?? student.coordinatorNote,
     },
   });

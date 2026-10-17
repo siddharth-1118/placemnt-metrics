@@ -205,6 +205,9 @@ export interface DocumentDto {
   status: DocStatus;
   reviewedAt: string | null;
   reviewNote: string | null;
+  /** Display name of the coordinator/super admin who reviewed this item.
+   *  EVALUATOR-ONLY — student-facing responses set it to null. */
+  reviewedByName: string | null;
   createdAt: string;
   /** URL the coordinator (or owner) can fetch the file from. */
   fileUrl: string;
@@ -218,6 +221,9 @@ export interface ProjectLinkDto {
   status: DocStatus;
   reviewedAt: string | null;
   reviewNote: string | null;
+  /** Display name of the coordinator/super admin who reviewed this link.
+   *  EVALUATOR-ONLY — student-facing responses set it to null. */
+  reviewedByName: string | null;
   createdAt: string;
 }
 
@@ -253,6 +259,20 @@ export interface AutoOverrides {
   coding: boolean;
 }
 
+/** One audited score change: who wrote which section, what value, when. */
+export interface ScoreAuditEntry {
+  /** Rubric field key (future-proof: also works alongside SCORE_CAPS keys). */
+  field: string;
+  value: number;
+  /** entered = coordinator section mark · override = super-admin manual
+   *  override · reset = returned to auto-calculation · auto = system
+   *  recalculation (marks bands / fresh scrape, no human edit). */
+  action: "entered" | "override" | "reset" | "auto" | "verified";
+  /** FullName of the account that made the change. */
+  byName: string;
+  at: string;
+}
+
 export interface StudentDto {
   id: string;
   registerNumber: string;
@@ -271,6 +291,14 @@ export interface StudentDto {
   proofUrls: ProofLink[];
   status: StudentStatus;
   coordinatorNote: string | null;
+  /** Display name of the coordinator/super admin who marked the whole
+   *  submission VERIFIED. EVALUATOR-ONLY — null in student responses. */
+  verifiedByName: string | null;
+  /** When the submission was verified (ISO). EVALUATOR-ONLY. */
+  verifiedAt: string | null;
+  /** Newest-first record of who entered which section's marks.
+   *  EVALUATOR-ONLY — always [] in student responses. */
+  scoreAudit: ScoreAuditEntry[];
   documents: DocumentDto[];
   projectLinks: ProjectLinkDto[];
   scores: ScoreBreakdown & { total: number };

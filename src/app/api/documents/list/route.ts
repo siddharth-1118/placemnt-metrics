@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, filterStudentDtoForUser } from "@/lib/auth";
-import { docToDto, linkToDto } from "@/lib/dto";
+import { docToDto, linkToDto, redactReviewers } from "@/lib/dto";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +28,22 @@ export async function GET(req: Request) {
     prisma.projectLink.findMany({ where: { studentId }, orderBy: { createdAt: "asc" } }),
   ]);
 
+  const docDtos = documents.map(docToDto);
+  const linkDtos = projectLinks.map(linkToDto);
+
+  // WHO reviewed an item is evaluator-only: a student viewing their own
+  // documents gets the status but never the reviewer's name.
+  if (!isEvaluator) {
+    return NextResponse.json({
+      documents: redactReviewers(docDtos, false),
+      projectLinks: redactReviewers(linkDtos, false),
+    });
+  }
+
   // Reuse the scope filter through a minimal shape so scoped coordinators
   // only see the documents/links inside their assigned sections.
   const filtered = filterStudentDtoForUser(
-    { documents: documents.map(docToDto), projectLinks: projectLinks.map(linkToDto) },
+    { documents: docDtos, projectLinks: linkDtos },
     user
   );
   return NextResponse.json(filtered);

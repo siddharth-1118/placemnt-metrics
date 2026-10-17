@@ -131,34 +131,55 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
     setError(null);
     setUploading(category);
     try {
+      const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+      const clientMime =
+        file.type ||
+        (ext === ".png"
+          ? "image/png"
+          : ext === ".pdf"
+            ? "application/pdf"
+            : ext === ".webp"
+              ? "image/webp"
+              : "image/jpeg");
+
       // Preferred flow: metadata handshake only, then the browser pushes the
       // file bytes STRAIGHT to Supabase Storage via a signed URL. Large files
-      // never pass through our server, which caps request bodies (~4.5 MB) —
-      // pushing them through caused "Failed to fetch" on every bigger upload.
-      const handshake = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category,
-          note: note[category]?.trim() || undefined,
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type || "application/octet-stream",
-        }),
-      });
-      const hb = await handshake.json();
-      if (!handshake.ok) throw new Error(hb?.error ?? "Upload failed");
-
-      if (hb.upload === "direct" && hb.signedUrl) {
-        // File bytes go browser → Supabase directly.
-        const put = await fetch(hb.signedUrl, {
-          method: "PUT",
-          body: file,
-          headers: { "x-upsert": "true" },
+      // never pass through our server, which caps request bodies (~4.5 MB).
+      let directUploaded = false;
+      try {
+        const handshake = await fetch("/api/documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            category,
+            note: note[category]?.trim() || undefined,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: clientMime,
+          }),
         });
-        if (!put.ok) throw new Error(`Upload failed (storage responded ${put.status})`);
-      } else {
-        // Fallback (local disk driver): classic multipart through the server.
+        const hb = await handshake.json();
+        if (handshake.ok && hb.upload === "direct" && hb.signedUrl) {
+          const put = await fetch(hb.signedUrl, {
+            method: "PUT",
+            body: file,
+            headers: {
+              "Content-Type": clientMime,
+              "x-upsert": "true",
+            },
+          });
+          if (put.ok) {
+            directUploaded = true;
+          }
+        }
+      } catch (directErr) {
+        // Direct storage push failed (storage downtime, adblocker, CORS, network).
+        // Fall back to server multipart flow below.
+        console.warn("Direct storage upload failed, falling back to server multipart:", directErr);
+      }
+
+      if (!directUploaded) {
+        // Fallback (or local disk driver): classic multipart through the server.
         const fd = new FormData();
         fd.set("file", file);
         fd.set("category", category);
@@ -167,6 +188,7 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
         const body = await res.json();
         if (!res.ok) throw new Error(body?.error ?? "Upload failed");
       }
+
       input.value = "";
       setNote((n) => ({ ...n, [category]: "" }));
       await load();
@@ -230,6 +252,10 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
       <div className="space-y-3">
         {DOC_CATEGORIES.map((cat) => {
           const mine = byCategory.get(cat.key) ?? [];
+          // A verified document freezes its section: the student can no longer
+          // add files there. Only a coordinator re-opens it (by deleting the
+          // verified proof, which notifies the student to re-upload).
+          const sectionLocked = mine.some((d) => d.status === "VERIFIED");
           const style = SECTION_STYLE[cat.key] ?? { icon: FileText, ring: "border-border" };
           const Icon = style.icon;
           return (
@@ -290,14 +316,20 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
                   </ul>
                 )}
 
-                {locked ? null : (
+                {locked ? null : sectionLocked ? (
+                  <p className="flex items-center gap-1.5 border-t border-[#e2ded5] pt-2.5 text-[11px] text-[#5c6470] dark:border-[#262f3c] dark:text-[#94a3b8]">
+                    <Lock className="h-3.5 w-3.5 shrink-0" />
+                    Verified by a coordinator — this section is locked. Ask your coordinator if it
+                    must be replaced.
+                  </p>
+                ) : (
                   <div className="flex flex-wrap items-center gap-2 border-t border-[#e2ded5] pt-2.5 dark:border-[#262f3c]">
                     <Input
                       ref={(el) => {
                         inputRefs.current[cat.key] = el;
                       }}
                       type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,image/*,application/pdf"
                       className="h-8 max-w-[200px] cursor-pointer text-xs file:mr-2 file:rounded file:border-0 file:bg-[#f0ece4] file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#1c2024] dark:file:bg-[#232b36] dark:file:text-white"
                     />
                     <Input

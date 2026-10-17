@@ -2,19 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, Code2, ExternalLink, Github, GraduationCap, Mail, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X, Loader2,
+  AlertTriangle, CheckCircle2, Clock, Code2, ExternalLink, Github, GraduationCap, Mail, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X, Loader2,
 } from "lucide-react";
 import { Button, Input, Label, Badge, Card, CardContent } from "@/components/ui";
 import { GithubCard } from "@/components/dashboard/github-card";
 import { LeetcodeCard } from "@/components/dashboard/leetcode-card";
 import { VerificationPanel } from "@/components/dashboard/verification-panel";
-import { SCORE_CAPS, SRM_OFFICIAL_METRICS, type ScoreBreakdown, type StudentDto } from "@/lib/types";
+import { SCORE_CAPS, SRM_OFFICIAL_METRICS, type ScoreAuditEntry, type ScoreBreakdown, type StudentDto } from "@/lib/types";
 import {
   canWriteScoreField,
   docCategoryScope,
   hasScopeClient,
   isSharedScoreField,
   linkCategoryScope,
+  scopesAreFull,
   type ScoreScope,
 } from "@/lib/scopes";
 import { fmtPct, fmtNumber, timeAgo } from "@/lib/utils";
@@ -31,6 +32,94 @@ const SCORE_FIELDS: { key: keyof ScoreBreakdown & string; label: string; cap: nu
   { key: "inhouse", label: "In-house projects", cap: SCORE_CAPS.inhouse, hint: "UROP/SERI/special lab 4 each · max 2" },
   { key: "membership", label: "Professional membership", cap: SCORE_CAPS.membership, hint: "Valid IEEE/IET/ACM/CSI/ISTE = 2" },
   { key: "shl", label: "SHL / Talent Discovery / NCET", cap: SCORE_CAPS.shl, hint: "Score bands: 90–100→10 … <25→0" },
+];
+
+interface RubricBreakdownItem {
+  fieldKey: keyof ScoreBreakdown;
+  label: string;
+  cap: number;
+  docCategories: string[];
+  linkCategories: string[];
+}
+
+const RUBRIC_BREAKDOWN_CONFIG: RubricBreakdownItem[] = [
+  {
+    fieldKey: "academic",
+    label: "1. Academic Performance (10th/12th/CGPA)",
+    cap: SCORE_CAPS.academic,
+    docCategories: ["TENTH_MARKSHEET", "TWELFTH_MARKSHEET", "CGPA_MARKSHEET", "SEM1_MARKSHEET", "SEM2_MARKSHEET"],
+    linkCategories: [],
+  },
+  {
+    fieldKey: "github",
+    label: "2. GitHub Footprint & Repositories",
+    cap: SCORE_CAPS.github,
+    docCategories: [],
+    linkCategories: [],
+  },
+  {
+    fieldKey: "coding",
+    label: "3. Coding Platforms (LeetCode)",
+    cap: SCORE_CAPS.coding,
+    docCategories: [],
+    linkCategories: [],
+  },
+  {
+    fieldKey: "internship",
+    label: "4. Internship Experience",
+    cap: SCORE_CAPS.internship,
+    docCategories: ["INTERNSHIP"],
+    linkCategories: [],
+  },
+  {
+    fieldKey: "certifications",
+    label: "5. Skills & Global Certifications",
+    cap: SCORE_CAPS.certifications,
+    docCategories: ["SKILL_CERT"],
+    linkCategories: [],
+  },
+  {
+    fieldKey: "projects",
+    label: "6. Projects Portfolio",
+    cap: SCORE_CAPS.projects,
+    docCategories: [],
+    linkCategories: ["PROJECT"],
+  },
+  {
+    fieldKey: "fullstack",
+    label: "7. Full-Stack Development Experience",
+    cap: SCORE_CAPS.fullstack,
+    docCategories: [],
+    linkCategories: ["FULLSTACK_PROJECT"],
+  },
+  {
+    fieldKey: "hackathons",
+    label: "8. Competitions & Hackathons",
+    cap: SCORE_CAPS.hackathons,
+    docCategories: ["COMPETITION"],
+    linkCategories: [],
+  },
+  {
+    fieldKey: "inhouse",
+    label: "9. In-House / Laboratory Projects",
+    cap: SCORE_CAPS.inhouse,
+    docCategories: ["INHOUSE_PROJECT"],
+    linkCategories: ["INHOUSE_PROJECT_LINK"],
+  },
+  {
+    fieldKey: "membership",
+    label: "10. Professional Memberships",
+    cap: SCORE_CAPS.membership,
+    docCategories: ["MEMBERSHIP"],
+    linkCategories: [],
+  },
+  {
+    fieldKey: "shl",
+    label: "11. SHL Assessment / Talent Discovery",
+    cap: SCORE_CAPS.shl,
+    docCategories: ["SHL"],
+    linkCategories: [],
+  },
 ];
 
 /** The three system-calculated components (super-admin overridable). */
@@ -197,6 +286,51 @@ export function StudentDetailModal({
     [isSuperAdmin, permissionScopes]
   );
 
+  /**
+   * Turning the whole submission green is reserved for ALL-SECTION (full
+   * access) reviewers. Scoped coordinators still verify their own sections
+   * and enter their own marks — they just cannot give the final sign-off.
+   */
+  const canFinalVerify = isSuperAdmin || scopesAreFull(permissionScopes);
+
+  /** Newest score-audit entry per rubric field → who set this section last. */
+  const lastByField = useMemo(() => {
+    const m = new Map<string, ScoreAuditEntry>();
+    for (const e of student?.scoreAudit ?? []) if (!m.has(e.field)) m.set(e.field, e);
+    return m;
+  }, [student]);
+
+  /** Reviewers: who contributed reviews to sections, and who signed off overall. */
+  const reviewersInfo = useMemo(() => {
+    if (!student) return { finalVerifier: null, sectionReviewers: [], allReviewers: [] };
+    const finalVerifier = student.status === "VERIFIED" ? student.verifiedByName : null;
+    const reviewers = new Set<string>();
+    for (const a of student.scoreAudit ?? []) {
+      if (a.action !== "auto" && a.byName) {
+        reviewers.add(a.byName);
+      }
+    }
+    for (const d of student.documents ?? []) {
+      if (d.reviewedByName) reviewers.add(d.reviewedByName);
+    }
+    for (const l of student.projectLinks ?? []) {
+      if (l.reviewedByName) reviewers.add(l.reviewedByName);
+    }
+    const allReviewers = Array.from(reviewers);
+    const sectionReviewers = allReviewers.filter((name) => name !== finalVerifier);
+    return { finalVerifier, sectionReviewers, allReviewers };
+  }, [student]);
+
+  const pendingDocsCount = useMemo(
+    () => student?.documents.filter((d) => d.status === "PENDING").length ?? 0,
+    [student]
+  );
+  const pendingLinksCount = useMemo(
+    () => student?.projectLinks.filter((l) => l.status === "PENDING").length ?? 0,
+    [student]
+  );
+  const totalPendingReviews = pendingDocsCount + pendingLinksCount;
+
   /** Server strips out-of-scope evidence; hide its score fields client-side too. */
   const scoreFieldAllowed = (key: keyof ScoreBreakdown) =>
     isSuperAdmin || canWriteScoreField(viewer, key);
@@ -253,6 +387,12 @@ export function StudentDetailModal({
 
   async function save(verify?: boolean) {
     if (!student) return;
+    if (verify === true && totalPendingReviews > 0) {
+      setError(
+        `Cannot mark candidate as verified: ${totalPendingReviews} evidence item(s) are still pending coordinator review. All documents and links must be verified or rejected first.`
+      );
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -365,6 +505,36 @@ export function StudentDetailModal({
               {student ? `${student.registerNumber} · ${student.email}` : ""}
               {student?.facultyAdvisor ? ` · FA: ${student.facultyAdvisor}` : ""}
             </p>
+            {student && (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                {student.status === "VERIFIED" ? (
+                  <p className="flex flex-wrap items-center gap-1 text-[#165b33] dark:text-[#78d69f]" title="Official verifier of record">
+                    <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Final Sign-off by <strong>{student.verifiedByName || "Coordinator"}</strong>
+                      {student.verifiedAt ? ` · ${timeAgo(student.verifiedAt)}` : ""}
+                    </span>
+                    {reviewersInfo.sectionReviewers.length > 0 && (
+                      <span className="text-[#5c6470] dark:text-[#94a3b8]">
+                        · Section evaluators: <strong className="text-[#1c2024] dark:text-white">{reviewersInfo.sectionReviewers.join(", ")}</strong>
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="flex flex-wrap items-center gap-1 text-[#92540d] dark:text-[#f3b55c]">
+                    <Clock className="h-3.5 w-3.5 shrink-0" />
+                    <span>Status: <strong>Pending Final Sign-off</strong></span>
+                    {reviewersInfo.allReviewers.length > 0 ? (
+                      <span className="text-[#5c6470] dark:text-[#94a3b8]">
+                        · Evaluated so far by: <strong className="text-[#1c2024] dark:text-white">{reviewersInfo.allReviewers.join(", ")}</strong>
+                      </span>
+                    ) : (
+                      <span className="text-[#5c6470] dark:text-[#94a3b8]">· Awaiting coordinator reviews</span>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           {student && (
             <Badge variant={student.status === "VERIFIED" ? "success" : "warning"}>
@@ -640,6 +810,213 @@ export function StudentDetailModal({
                   </div>
                 </details>
 
+                {/* Section Verification & Evaluator Breakdown (All 11 Criteria) */}
+                <div className="rounded-xl border border-[#ded9ce] bg-[#faf8f5] p-3.5 text-xs dark:border-[#262f3c] dark:bg-[#161c24]">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#ded9ce] dark:border-[#262f3c]">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-[#165b33] dark:text-[#78d69f]" />
+                      <span className="font-bold text-[#1c2024] dark:text-white">
+                        Section Verification &amp; Evaluator Breakdown (All 11 Criteria)
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+                      {student.documents.length} document(s) · {student.projectLinks.length} project link(s)
+                    </span>
+                  </div>
+
+                  <div className="mt-2.5 overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-[#ded9ce] text-[11px] font-semibold text-[#5c6470] dark:border-[#262f3c] dark:text-[#94a3b8]">
+                          <th className="pb-1.5 font-semibold">Rubric Section</th>
+                          <th className="pb-1.5 font-semibold">Marks Awarded</th>
+                          <th className="pb-1.5 font-semibold">Score Evaluator</th>
+                          <th className="pb-1.5 font-semibold">Proof &amp; Reviewers</th>
+                          <th className="pb-1.5 text-right font-semibold">Section Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#e8e4db] dark:divide-[#232b36]">
+                        {RUBRIC_BREAKDOWN_CONFIG.map((sec) => {
+                          const isAuto = isAutoField(sec.fieldKey);
+                          const last = lastByField.get(sec.fieldKey);
+                          const scoreVal = scores[sec.fieldKey] ?? 0;
+
+                          const secDocs = student.documents.filter((d) => sec.docCategories.includes(d.category));
+                          const secLinks = student.projectLinks.filter((l) => sec.linkCategories.includes(l.category));
+
+                          const pDocs = secDocs.filter((d) => d.status === "PENDING").length;
+                          const vDocs = secDocs.filter((d) => d.status === "VERIFIED").length;
+                          const rDocs = secDocs.filter((d) => d.status === "REJECTED").length;
+
+                          const pLinks = secLinks.filter((l) => l.status === "PENDING").length;
+                          const vLinks = secLinks.filter((l) => l.status === "VERIFIED").length;
+                          const rLinks = secLinks.filter((l) => l.status === "REJECTED").length;
+
+                          const totalPending = pDocs + pLinks;
+                          const totalVerified = vDocs + vLinks;
+                          const totalRejected = rDocs + rLinks;
+                          const totalEvidence = secDocs.length + secLinks.length;
+
+                          const proofReviewers = Array.from(
+                            new Set(
+                              secDocs
+                                .map((d) => d.reviewedByName)
+                                .concat(secLinks.map((l) => l.reviewedByName))
+                                .filter(Boolean) as string[]
+                            )
+                          );
+
+                          return (
+                            <tr key={sec.fieldKey} className="py-2">
+                              <td className="py-2 pr-2 font-medium text-[#1c2024] dark:text-white">
+                                <div>{sec.label}</div>
+                                <div className="font-mono text-[10px] text-[#5c6470] dark:text-[#94a3b8]">
+                                  Cap: {sec.cap} Marks
+                                </div>
+                              </td>
+                              <td className="py-2 pr-2 font-mono font-bold text-[#1c2024] dark:text-white">
+                                {scoreVal.toFixed(1)}{" "}
+                                <span className="text-[11px] font-normal text-muted-foreground">/ {sec.cap}</span>
+                              </td>
+                              <td className="py-2 pr-2 text-[11px]">
+                                {isAuto ? (
+                                  last?.action === "override" ? (
+                                    <span className="text-amber-700 dark:text-amber-400">
+                                      Overridden by {last.byName} ({timeAgo(last.at)})
+                                    </span>
+                                  ) : (
+                                    <span className="text-sky-700 dark:text-sky-400">
+                                      System calculated ({sec.fieldKey === "academic" ? "Marks bands" : "Live scrape"})
+                                    </span>
+                                  )
+                                ) : last ? (
+                                  <span className="text-[#165b33] dark:text-[#78d69f]">
+                                    {last.action === "entered" ? "Entered by" : "Updated by"} <strong>{last.byName}</strong>
+                                    <span className="text-muted-foreground"> · {timeAgo(last.at)}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-400 dark:text-stone-600">Pending score entry</span>
+                                )}
+                              </td>
+                              <td className="py-2 pr-2 text-[11px]">
+                                {totalEvidence > 0 ? (
+                                  <div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {vDocs + vLinks > 0 && (
+                                        <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                                          {vDocs + vLinks} verified
+                                        </span>
+                                      )}
+                                      {pDocs + pLinks > 0 && (
+                                        <span className="text-amber-700 dark:text-amber-400 font-medium">
+                                          {pDocs + pLinks} pending
+                                        </span>
+                                      )}
+                                      {rDocs + rLinks > 0 && (
+                                        <span className="text-rose-700 dark:text-rose-400 font-medium">
+                                          {rDocs + rLinks} rejected
+                                        </span>
+                                      )}
+                                    </div>
+                                    {proofReviewers.length > 0 && (
+                                      <div className="text-[10px] text-muted-foreground">
+                                        Proof reviewed by: <strong>{proofReviewers.join(", ")}</strong>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-[10px]">
+                                    {isAuto ? "Live platform evidence" : "No files/links attached"}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 text-right">
+                                {totalPending > 0 ? (
+                                  <Badge
+                                    variant="warning"
+                                    className="text-[10px] bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300"
+                                  >
+                                    Pending Review ({totalPending})
+                                  </Badge>
+                                ) : totalVerified > 0 ? (
+                                  <Badge variant="success" className="text-[10px]">
+                                    Verified
+                                  </Badge>
+                                ) : totalRejected > 0 ? (
+                                  <Badge variant="destructive" className="text-[10px]">
+                                    Rejected
+                                  </Badge>
+                                ) : isAuto ? (
+                                  <Badge variant="secondary" className="text-[10px]">
+                                    Auto Scored
+                                  </Badge>
+                                ) : scoreVal > 0 ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] text-emerald-700 border-emerald-300 dark:text-emerald-400"
+                                  >
+                                    Scored ({scoreVal.toFixed(1)})
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] text-stone-400 border-stone-200 dark:border-stone-800"
+                                  >
+                                    Unreviewed
+                                  </Badge>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Evaluator-only: who entered which marks, newest first */}
+                {student.scoreAudit.length > 0 && (
+                  <details
+                    className="rounded-xl border border-[#e2ded5] bg-[#faf8f5] p-3 text-xs dark:border-[#262f3c] dark:bg-[#161c24]"
+                    title="Evaluator-only audit trail"
+                  >
+                    <summary className="cursor-pointer font-semibold text-[#165b33] dark:text-[#78d69f]">
+                      Marks audit — who entered which marks ({student.scoreAudit.length})
+                    </summary>
+                    <ul className="mt-2 space-y-1">
+                      {student.scoreAudit.slice(0, 15).map((e, i) => (
+                        <li key={`${e.field}-${e.at}-${i}`} className="flex flex-wrap items-center gap-2">
+                          <span className="w-44 truncate font-medium text-[#1c2024] dark:text-white">
+                            {SCORE_FIELDS.find((f) => f.key === e.field)?.label ?? e.field}
+                          </span>
+                          <span className="font-mono font-semibold">{e.value.toFixed(1)}</span>
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              e.action === "entered"
+                                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                                : e.action === "override"
+                                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                  : e.action === "reset"
+                                    ? "bg-sky-500/15 text-sky-700 dark:text-sky-400"
+                                    : "bg-slate-500/15 text-slate-600 dark:text-slate-400"
+                            }`}
+                          >
+                            {e.action}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {e.action === "auto" ? "system" : e.byName} · {timeAgo(e.at)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {student.scoreAudit.length > 15 && (
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                        Showing the 15 most recent of {student.scoreAudit.length} entries.
+                      </p>
+                    )}
+                  </details>
+                )}
+
                 <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {SCORE_FIELDS.filter((f) => isSuperAdmin || scoreFieldAllowed(f.key)).map((f) => {
@@ -647,6 +1024,7 @@ export function StudentDetailModal({
                       const overridden = isAuto ? (student.autoOverrides?.[f.key as AutoScoreField] ?? false) : false;
                       const isResetting = isAuto ? autoReset.has(f.key as AutoScoreField) : false;
                       const touched = isAuto && (overridden || dirty.has(f.key)) && !isResetting;
+                      const last = lastByField.get(f.key);
                       return (
                       <div key={f.key} className="space-y-1">
                         <Label className="text-xs">
@@ -691,6 +1069,22 @@ export function StudentDetailModal({
                           }}
                         />
                         <p className="text-[11px] text-muted-foreground">{f.hint}</p>
+                        {last && (
+                          <p
+                            className="text-[10px] text-muted-foreground"
+                            title="Evaluator-only: last recorded score change for this section"
+                          >
+                            {last.action === "entered"
+                              ? "Entered by"
+                              : last.action === "override"
+                                ? "Overridden by"
+                                : last.action === "reset"
+                                  ? "Reset to auto by"
+                                  : "Last auto-recalculated"}{" "}
+                            {last.action === "auto" ? "" : last.byName}
+                            {last.action === "auto" ? "· system" : ""} · {last.value.toFixed(1)} M · {timeAgo(last.at)}
+                          </p>
+                        )}
                         {isAuto && isSuperAdmin && touched && (
                           <button
                             type="button"
@@ -732,15 +1126,61 @@ export function StudentDetailModal({
                       }}
                       className="h-9 w-full"
                     />
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <Button variant="outline" className="w-full sm:w-auto text-xs h-8" onClick={() => save(false)} disabled={saving || !canScore}>
-                        Save as Pending
-                      </Button>
-                      <Button className="w-full gap-1.5 bg-[#165b33] hover:bg-[#124929] px-4 text-xs font-semibold text-white shadow-sm sm:w-auto h-8" onClick={() => save(true)} disabled={saving || !canScore}>
-                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                        Save &amp; Verify Candidate
-                      </Button>
-                      {savedFlash && <Badge variant="success">Saved — records updated</Badge>}
+                    <div className="flex flex-col gap-2.5">
+                      {canFinalVerify && totalPendingReviews > 0 && (
+                        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                          <div>
+                            <p className="font-semibold">Verification Gating Active</p>
+                            <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                              Candidate has {pendingDocsCount > 0 ? `${pendingDocsCount} pending document(s)` : ""}
+                              {pendingDocsCount > 0 && pendingLinksCount > 0 ? " and " : ""}
+                              {pendingLinksCount > 0 ? `${pendingLinksCount} pending project link(s)` : ""} requiring coordinator review.
+                              All evidence must be verified or rejected by section coordinators before final approval can be granted.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        {canFinalVerify ? (
+                          <>
+                            <Button
+                              variant="outline"
+                              className="w-full sm:w-auto text-xs h-8"
+                              onClick={() => save(false)}
+                              disabled={saving || !canScore}
+                              title="Clear the verification state"
+                            >
+                              Save as Pending
+                            </Button>
+                            <Button
+                              className="w-full gap-1.5 bg-[#165b33] hover:bg-[#124929] px-4 text-xs font-semibold text-white shadow-sm sm:w-auto h-8"
+                              onClick={() => save(true)}
+                              disabled={saving || !canScore || totalPendingReviews > 0}
+                              title={
+                                totalPendingReviews > 0
+                                  ? `Cannot verify: ${totalPendingReviews} item(s) pending coordinator review`
+                                  : "Mark the whole submission verified (turns status green)"
+                              }
+                            >
+                              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                              Save &amp; Verify Candidate
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            className="w-full gap-1.5 bg-[#165b33] hover:bg-[#124929] px-4 text-xs font-semibold text-white shadow-sm sm:w-auto h-8"
+                            onClick={() => save()}
+                            disabled={saving || !canScore}
+                            title="Save your section scores — final verification is reserved for all-sections coordinators"
+                          >
+                            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                            Save Scores
+                          </Button>
+                        )}
+                        {savedFlash && <Badge variant="success">Saved — records updated</Badge>}
+                      </div>
                     </div>
                   </div>
                 </div>
