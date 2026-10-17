@@ -1,0 +1,174 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireEvaluator, filterStudentDtoForUser } from "@/lib/auth";
+import { scopesAreFull, SCORE_FIELD_VIEW_SCOPE, type ScoreScope } from "@/lib/scopes";
+import { toDto } from "@/lib/dto";
+import { buildXlsx, type XlsxRow } from "@/lib/xlsx";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/students/export — cohort report as a real Excel (.xlsx) file.
+ *
+ * Access rules:
+ *  - Students and anonymous users are rejected (403 / 401) — coordinators
+ *    and super admins only. The same evaluator gate as the list endpoint.
+ *  - A scoped coordinator's file contains only their sections' columns;
+ *    the super admin and unrestricted coordinators get the full sheet.
+ */
+export async function GET() {
+  const { user, error } = await requireEvaluator();
+  if (error) return error;
+
+  const students = await prisma.student.findMany({
+    where: {
+      OR: [{ role: { not: "COORDINATOR" } }, { tenthPercent: { gt: 0 } }],
+    },
+    orderBy: [{ totalScore: "desc" }, { registerNumber: "asc" }],
+    include: { scrapes: true, documents: true, projectLinks: true },
+  });
+
+  // Same scope filtering the dashboard uses — out-of-scope marks are stripped
+  // server-side before anything is written into the workbook.
+  const dtos = students.map((s) => filterStudentDtoForUser(toDto(s), user));
+  const scopes: ScoreScope[] | null = user.isSuperAdmin
+    ? null
+    : scopesAreFull(user.permissionScopes)
+      ? null
+      : user.permissionScopes;
+
+  const full = scopes === null;
+  const has = (s: ScoreScope) => full || scopes!.includes(s);
+
+  // Column plan: identity columns + contributor attribution + all 13 evaluation components
+  type Col = { header: string; width: number; value: (s: (typeof dtos)[number]) => string | number };
+  const cols: Col[] = [
+    { header: "Rank", width: 7, value: (s) => s.rank ?? "" },
+    { header: "Register Number [Contributor ID]", width: 18, value: (s) => s.registerNumber },
+    { header: "Full Name [Responsible Contributor]", width: 26, value: (s) => s.fullName },
+    { header: "College Email", width: 28, value: (s) => s.email },
+    { header: "Faculty Advisor [Faculty Guide]", width: 24, value: (s) => s.facultyAdvisor ?? "School of Computing" },
+  ];
+
+  if (has("ACADEMIC")) {
+    cols.push(
+      { header: "10th % [Owner: Sravani]", width: 14, value: (s) => `${s.tenthPercent}%` },
+      { header: "12th % [Owner: Sravani]", width: 14, value: (s) => `${s.twelfthPercent}%` },
+      { header: "Degree CGPA [Owner: Sravani]", width: 14, value: (s) => s.cgpa },
+      { header: "Sem 1 SGPA", width: 12, value: (s) => s.sgpaSem1 },
+      { header: "Sem 2 SGPA", width: 12, value: (s) => s.sgpaSem2 },
+      { header: "Academic Score (10) [Sravani]", width: 16, value: (s) => s.scores.academic },
+    );
+  }
+
+  if (has("GITHUB")) {
+    cols.push(
+      {
+        header: "GitHub Repos [Scraped]",
+        width: 14,
+        value: (s) => {
+          const gh = s.scrapes?.find((x) => x.platform === "GITHUB")?.data as any;
+          return gh?.publicRepos ?? "—";
+        },
+      },
+      {
+        header: "GitHub Stars [Scraped]",
+        width: 14,
+        value: (s) => {
+          const gh = s.scrapes?.find((x) => x.platform === "GITHUB")?.data as any;
+          return gh?.totalStars ?? "—";
+        },
+      },
+      {
+        header: "GitHub 1y Contribs [Scraped]",
+        width: 16,
+        value: (s) => {
+          const gh = s.scrapes?.find((x) => x.platform === "GITHUB")?.data as any;
+          return gh?.contributionsLastYear ?? "—";
+        },
+      },
+      { header: "GitHub Score (15) [Harshitha & Harshini]", width: 22, value: (s) => s.scores.github },
+    );
+  }
+
+  if (has("CODING")) {
+    cols.push(
+      {
+        header: "LeetCode Solved [Scraped]",
+        width: 15,
+        value: (s) => {
+          const lc = s.scrapes?.find((x) => x.platform === "LEETCODE")?.data as any;
+          return lc?.solvedTotal ?? "—";
+        },
+      },
+      {
+        header: "LeetCode Rating [Scraped]",
+        width: 15,
+        value: (s) => {
+          const lc = s.scrapes?.find((x) => x.platform === "LEETCODE")?.data as any;
+          return lc?.contestRating ? Math.round(lc.contestRating) : "—";
+        },
+      },
+      {
+        header: "Coding Score (10) [Sarvesh | Verifier: Shubhang Dharshan]",
+        width: 28,
+        value: (s) => s.scores.coding,
+      },
+    );
+  }
+
+  const sectionCols: Array<{
+    key: keyof (typeof dtos)[number]["scores"];
+    header: string;
+    width: number;
+  }> = [
+    { key: "internship", header: "Internships (10) [Aarya Jain & Arya G]", width: 22 },
+    { key: "certifications", header: "Global Certs (15) [Darshil Joshi & Rachit Jha]", width: 24 },
+    { key: "projects", header: "Projects (5) [Ahmad Thalha, Abishai & Kunsh]", width: 24 },
+    { key: "fullstack", header: "Full-Stack FSD (5) [Sai, Eishit & Manushree]", width: 24 },
+    { key: "hackathons", header: "Hackathons (10) [Vaishnavi, Darshil & Sharmistha]", width: 24 },
+    { key: "inhouse", header: "In-House UROP/SERI (8) [Vishnu, Thirisha & Abhishek]", width: 24 },
+    { key: "membership", header: "Memberships (2) [Diksha & Adutiya]", width: 20 },
+    { key: "shl", header: "SHL / NCET (10) [Krish, Sharon & Shagun]", width: 22 },
+  ];
+
+  for (const { key, header, width } of sectionCols) {
+    const scope = SCORE_FIELD_VIEW_SCOPE[key as string];
+    if (scope && has(scope)) {
+      cols.push({ header, width, value: (s) => Number(s.scores[key]) });
+    }
+  }
+
+  cols.push(
+    { header: "Total Score (100)", width: 14, value: (s) => s.scores.total },
+    { header: "Status [Audit Verdict]", width: 14, value: (s) => s.status },
+    {
+      header: "Verified Proofs",
+      width: 14,
+      value: (s) => (s.documents ?? []).filter((d) => d.status === "VERIFIED").length,
+    },
+    { header: "Total Uploads", width: 12, value: (s) => (s.documents ?? []).length },
+    { header: "Last Updated", width: 12, value: (s) => s.updatedAt.slice(0, 10) },
+  );
+
+  const headers = cols.map((c) => c.header);
+  const rows: XlsxRow[] = dtos.map((s) => cols.map((c) => c.value(s)));
+
+  const buf = buildXlsx({
+    sheetName: "Placement Matrix",
+    headers,
+    rows,
+    columnWidths: cols.map((c) => c.width),
+  });
+
+  const filename = `SRM_Placement_Matrix_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  return new NextResponse(new Uint8Array(buf), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+

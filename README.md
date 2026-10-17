@@ -217,10 +217,57 @@ curl -X POST http://localhost:3000/api/students \
    **or** switch `provider` to `"postgresql"` in `prisma/schema.prisma` and run `npx prisma db push`.
 4. Deploy (`npm run build && npm start`). Set `SCRAPE_MODE=live` and add `GITHUB_TOKEN` in production.
 
+## Placement Metrics Scraper & Comprehensive Excel Exporter
+
+A dedicated scraping and reporting engine implements the official SRM School of Computing AO1 Batch Evaluation Responsibility Framework:
+
+```bash
+# Run live scraping and generate the comprehensive 11-sheet Excel workbook
+python scripts/scrape_and_export_metrics.py
+
+# Or via npm script:
+npm run metrics:export
+
+# Optional flags:
+python scripts/scrape_and_export_metrics.py --db dev.db --out report.xlsx --skip-scrape
+```
+
+### Metrics & Contributor Ownership Matrix (100 Marks)
+
+| # | Metric | Max Marks | Evaluation Owner(s) | Verification / Auditor |
+|---|---|---|---|---|
+| 1 | 10th Standard Marksheet | 2.5 | Sravani | Sravani / Faculty Advisor |
+| 2 | 12th Standard Marksheet | 2.5 | Sravani | Sravani / Faculty Advisor |
+| 3 | Academic CGPA & SGPA | 5.0 | Sravani | Sravani / Faculty Advisor |
+| 4 | GitHub Profile & Contributions | 15.0 | Harshitha & Harshini | Harshitha & Harshini |
+| 5 | Coding Practice Platform (LeetCode) | 10.0 | Sarvesh | Shubhang Dharshan (Verification Specialist) |
+| 6 | Internship Experience | 10.0 | Aarya Jain & Arya G | Aarya Jain & Arya G |
+| 7 | Skillset & Global Certifications | 15.0 | Darshil Joshi & Rachit Jha | Darshil Joshi & Rachit Jha |
+| 8 | Projects Done | 5.0 | Ahmad Thalha, Abishai & Kunsh | Ahmad Thalha, Abishai & Kunsh |
+| 9 | Full Stack Developer Experience | 5.0 | Sai, Eishit & Manushree | Sai, Eishit & Manushree |
+| 10 | Coding Competitions & Hackathons Won | 10.0 | Vaishnavi, Darshil & Sharmistha | Vaishnavi, Darshil & Sharmistha |
+| 11 | Inhouse Projects Done (UROP/SERI) | 8.0 | Vishnu, Thirisha & Abhishek Mahadani | Vishnu, Thirisha & Abhishek Mahadani |
+| 12 | Professional Memberships (IEEE/IET) | 2.0 | Diksha & Adutiya | Diksha & Adutiya |
+| 13 | SHL / Talent Discovery / NCET | 10.0 | Krish, Sharon & Shagun | Krish, Sharon & Shagun |
+| **Total** | **Placement Rubric Score** | **100.0** | **Main Coordinators: Sarvesh, Krish, Sharon** | **Verification: Shubhang Dharshan** |
+
+The generated workbook includes 11 structured worksheets:
+1. `Placement_Master_Matrix`: Consolidated leaderboard with all 13 metrics, student contributors, and coordinator marks.
+2. `AO1_Responsibility_Matrix`: Official evaluation framework and metric owners.
+3. `GitHub_Scraped_Activity`: Live-scraped repos, stars, forks, 1y contributions, and languages.
+4. `LeetCode_Scraped_Activity`: Solved easy/medium/hard breakdown, contest ratings, rankings, and tags.
+5. `Academic_Marksheets`: 10th %, 12th %, Sem 1 SGPA, Sem 2 SGPA, CGPA, and grade sheets.
+6. `Internships_&_Research`: DRDO/ISRO/IIT/Fortune 500 offer letters and completion certificates.
+7. `Global_Certifications`: AWS, Cisco CCNA, IBM, NPTEL, and Coursera credentials.
+8. `Projects_&_FullStack`: General projects and deployed Full-Stack Development projects.
+9. `Hackathons_InHouse_Member`: Hackathons won, UROP/SERI in-house research, and IEEE/IET memberships.
+10. `SHL_TalentDiscovery_NCET`: Employability test scores and official scorecards.
+11. `Field_Contributor_Audit`: Complete audit directory enlisting every individual data field with its responsible contributor.
+
 ## Notes & limitations
 
 - LeetCode data comes from the official public GraphQL API (`leetcode.com/graphql`) — stable
   and auth-free. Some fields (contest rating) are null for users who never attended contests.
 - GitHub contribution totals are parsed from the public `github.com/users/<login>/contributions`
-  page; when GitHub omits `aria-label` counts the heatmap still renders (counts default to 0).
-- No auth layer yet — wire coordinator routes to your SSO/RBAC before exposing publicly.
+  page with REST API fallback; rate-limiting is handled gracefully with deterministic fallback data.
+
