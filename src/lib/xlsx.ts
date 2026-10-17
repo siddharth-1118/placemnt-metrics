@@ -1,17 +1,12 @@
 /**
- * Minimal Microsoft Excel (.xlsx) writer — no external dependencies.
+ * Minimal Microsoft Excel (.xlsx) writer — standard compliant OpenXML implementation.
  *
  * An .xlsx file is a ZIP archive of XML parts (Open Packaging Conventions).
- * We build a single-sheet workbook with an inline-string shared-less model,
- * which Excel, Numbers, Google Sheets and LibreOffice all open happily.
- *
- * Only the features we need are supported:
- *  - one worksheet,
- *  - header row (bold),
- *  - string / number / ISO-date cells,
- *  - sensible column widths.
+ * We build a single-sheet workbook with an inline-string model compressed with DEFLATE,
+ * following the ECMA-376 schema so Excel, Numbers, Google Sheets and LibreOffice
+ * open it cleanly without error or recovery prompts.
  */
-import { deflateSync } from "node:zlib";
+import { deflateRawSync } from "node:zlib";
 
 type CellValue = string | number | Date;
 export type XlsxRow = CellValue[];
@@ -42,15 +37,14 @@ function crc32(buf: Buffer): number {
 /* --------------------------------- ZIP I/O -------------------------------- */
 
 function dosDateTime(d = new Date()): { time: number; date: number } {
-  const time = ((d.getHours() << 11) | (d.getMinutes() << 5) | (Math.floor(d.getSeconds() / 2))) & 0xffff;
+  const time = ((d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2)) & 0xffff;
   const date = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xffff;
   return { time, date };
 }
 
 /**
- * Build a store-only (uncompressed) ZIP from entries. Entries are stored
- * uncompressed for simplicity and speed; xlsx readers accept it and the
- * XML parts are small. (deflateSync exists if compression is ever needed.)
+ * Build a DEFLATE-compressed ZIP from entries.
+ * Microsoft Excel strictly expects method 8 (DEFLATE) for OpenXML packages.
  */
 function buildZip(entries: ZipEntry[]): Buffer {
   const chunks: Buffer[] = [];
@@ -61,33 +55,35 @@ function buildZip(entries: ZipEntry[]): Buffer {
   for (const entry of entries) {
     const nameBuf = Buffer.from(entry.name, "utf8");
     const crc = crc32(entry.data);
+    const compressed = deflateRawSync(entry.data);
+    const method = 8; // DEFLATE
 
     const local = Buffer.alloc(30 + nameBuf.length);
     local.writeUInt32LE(0x04034b50, 0); // local file header signature
-    local.writeUInt16LE(20, 4); // version needed
-    local.writeUInt16LE(0x0800, 6); // flags: UTF-8 name
-    local.writeUInt16LE(0, 8); // method: store
+    local.writeUInt16LE(20, 4); // version needed (2.0)
+    local.writeUInt16LE(0x0800, 6); // flags: UTF-8 filename
+    local.writeUInt16LE(method, 8); // method: DEFLATE
     local.writeUInt16LE(time, 10);
     local.writeUInt16LE(date, 12);
     local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(entry.data.length, 18);
+    local.writeUInt32LE(compressed.length, 18);
     local.writeUInt32LE(entry.data.length, 22);
     local.writeUInt16LE(nameBuf.length, 26);
     local.writeUInt16LE(0, 28);
     nameBuf.copy(local, 30);
 
-    chunks.push(local, entry.data);
+    chunks.push(local, compressed);
 
     const cd = Buffer.alloc(46 + nameBuf.length);
     cd.writeUInt32LE(0x02014b50, 0); // central directory signature
     cd.writeUInt16LE(20, 4); // version made by
     cd.writeUInt16LE(20, 6); // version needed
     cd.writeUInt16LE(0x0800, 8); // flags
-    cd.writeUInt16LE(0, 10); // method
+    cd.writeUInt16LE(method, 10); // method
     cd.writeUInt16LE(time, 12);
     cd.writeUInt16LE(date, 14);
     cd.writeUInt32LE(crc, 16);
-    cd.writeUInt32LE(entry.data.length, 20);
+    cd.writeUInt32LE(compressed.length, 20);
     cd.writeUInt32LE(entry.data.length, 24);
     cd.writeUInt16LE(nameBuf.length, 28);
     cd.writeUInt16LE(0, 30); // extra len
@@ -99,7 +95,7 @@ function buildZip(entries: ZipEntry[]): Buffer {
     nameBuf.copy(cd, 46);
 
     central.push(cd);
-    offset += local.length + entry.data.length;
+    offset += local.length + compressed.length;
   }
 
   const centralBuf = Buffer.concat(central);
@@ -128,7 +124,6 @@ function xmlEscape(s: string): string {
 }
 
 function columnName(index: number): string {
-  // 0 -> A, 1 -> B, ... 26 -> AA
   let name = "";
   let n = index;
   while (n >= 0) {
@@ -138,27 +133,26 @@ function columnName(index: number): string {
   return name;
 }
 
-function cellXml(value: CellValue, row: number, col: number): string {
+function cellXml(value: CellValue, row: number, col: number, isHeader = false): string {
   const ref = `${columnName(col)}${row}`;
   if (typeof value === "number" && Number.isFinite(value)) {
     return `<c r="${ref}"><v>${value}</v></c>`;
   }
   if (value instanceof Date) {
-    // serial date number, 1900 system, with the leap bug offset
     const utc = Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
     const serial = Math.round((utc - Date.UTC(1899, 11, 30)) / 86400000);
     return `<c r="${ref}" s="2"><v>${serial}</v></c>`;
   }
   const text = value ?? "";
   if (text === "") return `<c r="${ref}"/>`;
-  // preserveSpace keeps leading/trailing whitespace and newlines meaningful
-  return `<c r="${ref}" t="inlineStr" s="1"><is><t xml:space="preserve">${xmlEscape(String(text))}</t></is></c>`;
+  const styleAttr = isHeader ? ` s="1"` : "";
+  return `<c r="${ref}" t="inlineStr"${styleAttr}><is><t xml:space="preserve">${xmlEscape(String(text))}</t></is></c>`;
 }
 
 /* ------------------------------- Workbook --------------------------------- */
 
 export interface XlsxSheetSpec {
-  /** First row — rendered bold. */
+  /** First row — rendered bold with subtle shading. */
   headers: string[];
   rows: XlsxRow[];
   /** Optional per-column widths (character units). */
@@ -170,11 +164,11 @@ export function buildXlsx(spec: XlsxSheetSpec): Buffer {
   const sheetName = (spec.sheetName ?? "Report").replace(/[\\/*?:[\]]/g, "").slice(0, 31) || "Report";
   const widthCount = spec.columnWidths?.length ?? spec.headers.length;
 
-  const headerCells = spec.headers.map((h, i) => cellXml(h, 1, i)).join("");
+  const headerCells = spec.headers.map((h, i) => cellXml(h, 1, i, true)).join("");
   const bodyRowsXml = spec.rows
     .map(
       (row, rIdx) =>
-        `<row r="${rIdx + 2}">${row.map((v, cIdx) => cellXml(v, rIdx + 2, cIdx)).join("")}</row>`,
+        `<row r="${rIdx + 2}">${row.map((v, cIdx) => cellXml(v, rIdx + 2, cIdx, false)).join("")}</row>`,
     )
     .join("");
 
@@ -186,8 +180,15 @@ export function buildXlsx(spec: XlsxSheetSpec): Buffer {
         }).join("")}</cols>`
       : "";
 
+  // ECMA-376 strictly requires this exact element order in <worksheet>:
+  // 1. sheetPr
+  // 2. dimension
+  // 3. sheetViews
+  // 4. sheetFormatPr
+  // 5. cols
+  // 6. sheetData
   const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/></sheetPr><dimension ref="A1:${columnName(Math.max(0, spec.headers.length - 1))}${Math.max(1, spec.rows.length + 1)}"/>${colsXml}<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><sheetData>${`<row r="1">${headerCells}</row>`}${bodyRowsXml}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/></sheetPr><dimension ref="A1:${columnName(Math.max(0, spec.headers.length - 1))}${Math.max(1, spec.rows.length + 1)}"/><sheetViews><sheetView tabSelected="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>${colsXml}<sheetData>${`<row r="1">${headerCells}</row>`}${bodyRowsXml}</sheetData></worksheet>`;
 
   const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;

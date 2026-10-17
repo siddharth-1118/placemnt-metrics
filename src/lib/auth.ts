@@ -279,3 +279,29 @@ export async function requireScorer(): Promise<
 export function isEvaluatorUser(user: SessionUser | null): boolean {
   return !!user?.canViewSubmissions;
 }
+
+/** Guard for super-admin-only APIs (coordinator management, database backups & recovery). */
+export async function requireSuperAdmin(): Promise<
+  { user: SessionUser; error: null } | { user: null; error: Response }
+> {
+  const user = await getSessionUser();
+  if (!user) {
+    return {
+      user: null,
+      error: Response.json(
+        { error: "Sign in required" },
+        { status: 401 }
+      ),
+    };
+  }
+  if (!user.isSuperAdmin) {
+    return {
+      user: null,
+      error: Response.json(
+        { error: "Super admin access required" },
+        { status: 403 }
+      ),
+    };
+  }
+  return { user, error: null };
+}

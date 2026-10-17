@@ -5,6 +5,7 @@ import { Dashboard } from "@/components/dashboard/dashboard";
 import { ResetRequestsPanel } from "@/components/dashboard/reset-requests";
 import { SubmissionsToggle } from "@/components/dashboard/submissions-toggle";
 import { CoordinatorsAdmin } from "@/components/dashboard/coordinators-admin";
+import { DatabaseBackupPanel } from "@/components/dashboard/backup-panel";
 import { GraduationCap } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -44,6 +45,7 @@ export default async function CoordinatorDashboardPage() {
 
       {user.isSuperAdmin && (
         <div className="mb-6 space-y-6">
+          <DatabaseBackupPanel />
           <SubmissionsToggle />
           <CoordinatorsAdmin />
         </div>
