@@ -303,7 +303,14 @@ export function StudentDetailModal({
   /** Reviewers: who contributed reviews to sections, and who signed off overall. */
   const reviewersInfo = useMemo(() => {
     if (!student) return { finalVerifier: null, sectionReviewers: [], allReviewers: [] };
-    const finalVerifier = student.status === "VERIFIED" ? student.verifiedByName : null;
+    const finalVerifier =
+      student.status === "VERIFIED"
+        ? student.verifiedByName ||
+          student.scoreAudit?.find((a) => a.action === "verified" || a.field === "finalVerification")?.byName ||
+          student.scoreAudit?.find((a) => a.byName && a.action !== "auto")?.byName ||
+          student.documents?.find((d) => d.reviewedByName)?.reviewedByName ||
+          "Faculty Coordinator"
+        : null;
     const reviewers = new Set<string>();
     for (const a of student.scoreAudit ?? []) {
       if (a.action !== "auto" && a.byName) {
@@ -511,7 +518,7 @@ export function StudentDetailModal({
                   <p className="flex flex-wrap items-center gap-1 text-[#165b33] dark:text-[#78d69f]" title="Official verifier of record">
                     <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
                     <span>
-                      Final Sign-off by <strong>{student.verifiedByName || "Coordinator"}</strong>
+                      Final Sign-off by <strong>{reviewersInfo.finalVerifier || student.verifiedByName || "Faculty Coordinator"}</strong>
                       {student.verifiedAt ? ` · ${timeAgo(student.verifiedAt)}` : ""}
                     </span>
                     {reviewersInfo.sectionReviewers.length > 0 && (

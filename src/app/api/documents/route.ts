@@ -44,6 +44,13 @@ async function verifiedSectionLock(
   requesterIsEvaluator: boolean
 ): Promise<NextResponse | null> {
   if (requesterIsEvaluator) return null;
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { status: true },
+  });
+  // If the student submission is currently in PENDING state (e.g. re-registering or editing), allow document uploads
+  if (student?.status !== "VERIFIED") return null;
+
   const verified = await prisma.document.findFirst({
     where: { studentId, category, status: "VERIFIED" },
     select: { id: true },

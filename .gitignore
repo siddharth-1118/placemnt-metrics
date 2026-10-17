@@ -39,4 +39,5 @@ dev-boot.log
 
 # agent artifacts
 .agents/
+recovered_docs/
 

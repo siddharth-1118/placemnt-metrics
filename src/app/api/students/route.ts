@@ -62,12 +62,13 @@ export async function GET() {
   const { user, error } = await requireEvaluator();
   if (error) return error;
 
-  // Coordinators are hidden from the batch leaderboard EXCEPT when they have
-  // submitted their own placement profile (real marks) — student-coordinators
-  // then appear as candidates too. Pure faculty accounts (0 marks) stay hidden.
+  // Return all registered student candidates from the database.
+  // Pure faculty coordinator accounts (registerNumber starting with COORD-) are excluded from candidate ranking.
   const students = await prisma.student.findMany({
     where: {
-      OR: [{ role: { not: "COORDINATOR" } }, { tenthPercent: { gt: 0 } }],
+      NOT: {
+        registerNumber: { startsWith: "COORD-" },
+      },
     },
     orderBy: [{ totalScore: "desc" }, { registerNumber: "asc" }],
     include: { scrapes: true, documents: true, projectLinks: true },

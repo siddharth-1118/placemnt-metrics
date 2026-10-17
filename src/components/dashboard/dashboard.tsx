@@ -21,7 +21,14 @@ type StatusFilter = "ALL" | "PENDING" | "VERIFIED";
 type ActiveSection = "STUDENTS" | "SCORES" | "MATRIX" | "REPORTS";
 
 export function getStudentReviewers(s: StudentDto): { finalVerifier: string | null; sectionReviewers: string[] } {
-  const finalVerifier = s.status === "VERIFIED" ? s.verifiedByName : null;
+  const finalVerifier =
+    s.status === "VERIFIED"
+      ? s.verifiedByName ||
+        s.scoreAudit?.find((a) => a.action === "verified" || a.field === "finalVerification")?.byName ||
+        s.scoreAudit?.find((a) => a.byName && a.action !== "auto")?.byName ||
+        s.documents?.find((d) => d.reviewedByName)?.reviewedByName ||
+        "Faculty Coordinator"
+      : null;
   const reviewers = new Set<string>();
   for (const a of s.scoreAudit ?? []) {
     if (a.byName && a.action !== "auto" && a.byName !== finalVerifier) {
@@ -345,15 +352,33 @@ export function Dashboard({
 
       {/* 3. Overview Strip — Key Administrative Information */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
-        <div className="px-2">
+        <div
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setStatusFilter("ALL");
+          }}
+          className={`px-2 cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36] ${
+            statusFilter === "ALL" && activeSection === "STUDENTS" ? "ring-1 ring-[#165b33]" : ""
+          }`}
+          title="Click to view all registered students"
+        >
           <span className="text-[11px] font-medium text-[#5c6470] dark:text-[#94a3b8]">
-            Registered Students
+            Registered Students (All)
           </span>
           <div className="mt-0.5 text-lg font-bold text-[#1c2024] dark:text-white">
             {stats.total}
           </div>
         </div>
-        <div className="px-2 border-l border-[#e2ded5] dark:border-[#262f3c]">
+        <div
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setStatusFilter("PENDING");
+          }}
+          className={`px-2 border-l border-[#e2ded5] dark:border-[#262f3c] cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36] ${
+            statusFilter === "PENDING" && activeSection === "STUDENTS" ? "ring-1 ring-[#92540d]" : ""
+          }`}
+          title="Click to filter pending reviews"
+        >
           <span className="text-[11px] font-medium text-[#5c6470] dark:text-[#94a3b8]">
             Pending Reviews
           </span>
@@ -361,7 +386,16 @@ export function Dashboard({
             {stats.pending}
           </div>
         </div>
-        <div className="px-2 border-l border-[#e2ded5] dark:border-[#262f3c]">
+        <div
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setStatusFilter("VERIFIED");
+          }}
+          className={`px-2 border-l border-[#e2ded5] dark:border-[#262f3c] cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36] ${
+            statusFilter === "VERIFIED" && activeSection === "STUDENTS" ? "ring-1 ring-[#165b33]" : ""
+          }`}
+          title="Click to filter verified students"
+        >
           <span className="text-[11px] font-medium text-[#5c6470] dark:text-[#94a3b8]">
             Verified Students
           </span>
@@ -369,7 +403,11 @@ export function Dashboard({
             {stats.verified}
           </div>
         </div>
-        <div className="px-2 border-l border-[#e2ded5] dark:border-[#262f3c]">
+        <div
+          onClick={() => setActiveSection("MATRIX")}
+          className="px-2 border-l border-[#e2ded5] dark:border-[#262f3c] cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36]"
+          title="Click to view matrix rules"
+        >
           <span className="text-[11px] font-medium text-[#5c6470] dark:text-[#94a3b8]">
             Matrix Rules
           </span>
