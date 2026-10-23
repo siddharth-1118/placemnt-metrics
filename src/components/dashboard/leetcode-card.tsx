@@ -115,7 +115,7 @@ export function LeetcodeCard({ data }: { data: LeetcodeScrapedData }) {
         </div>
 
         {/* Badges strip if any */}
-        {data.badges.length > 0 && (
+        {data.badges && data.badges.length > 0 && (
           <div>
             <p className="mb-1.5 text-xs font-semibold text-[#1c2024] dark:text-white">
               Earned Badges &amp; Recognitions ({data.badges.length})

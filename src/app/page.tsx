@@ -8,6 +8,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { SRM_OFFICIAL_METRICS } from "@/lib/types";
+import { ContributorsSection } from "@/components/contributors-section";
 
 export default function HomePage() {
   return (
@@ -140,6 +141,11 @@ export default function HomePage() {
           </table>
         </div>
       </div>
+
+      {/* 4. Project Contributors Section */}
+      <section id="contributors" className="mt-14 scroll-mt-20">
+        <ContributorsSection />
+      </section>
     </div>
   );
 }

@@ -113,6 +113,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                         Student Dashboard
                       </Link>
                     </li>
+                    <li>
+                      <Link href="/#contributors" className="hover:text-[#165b33] dark:hover:text-white font-medium">
+                        Contributors
+                      </Link>
+                    </li>
                   </ul>
                 </div>
 

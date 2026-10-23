@@ -69,6 +69,7 @@ export function Navbar({ user }: NavbarProps) {
     navLinks = [
       { href: "/", label: "Home" },
       { href: "/#matrix", label: "Placement Matrix" },
+      { href: "/#contributors", label: "Contributors" },
       { href: "/student/submit", label: "Register" },
       { href: "/login", label: "Login" },
     ];
