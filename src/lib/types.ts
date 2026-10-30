@@ -188,7 +188,13 @@ export interface LeetcodeScrapedData {
   solvedHard: number;
   solvedTotal: number;
   skillTags: LeetcodeSkillTag[];
+  badges?: LeetcodeBadge[];
   recentSubmissions: LeetcodeRecentSubmission[];
+}
+
+export interface LeetcodeBadge {
+  name: string;
+  icon?: string | null;
 }
 
 /* ------------------------------ API contracts ------------------------------ */
@@ -325,3 +331,5 @@ export interface SubmitStudentInput {
   leetcodeUrl?: string;
   proofUrls?: ProofLink[];
 }
+
+export type SrmMetricCriterion = OfficialMetric;

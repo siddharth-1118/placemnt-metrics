@@ -114,6 +114,25 @@ export function LeetcodeCard({ data }: { data: LeetcodeScrapedData }) {
           </div>
         </div>
 
+        {/* Badges strip if any */}
+        {data.badges && data.badges.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold text-[#1c2024] dark:text-white">
+              Earned Badges &amp; Recognitions ({data.badges.length})
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {data.badges.map((b) => (
+                <span
+                  key={b.name}
+                  className="rounded border border-[#e2ded5] bg-[#faf8f5] px-2 py-0.5 text-[11px] text-[#1c2024] dark:border-[#262f3c] dark:bg-[#161c24] dark:text-[#f0ede6]"
+                >
+                  {b.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Recognitions strip: top skill tags + contest rating if any */}
         {(data.skillTags.length > 0 || data.contestRating) && (
           <div>

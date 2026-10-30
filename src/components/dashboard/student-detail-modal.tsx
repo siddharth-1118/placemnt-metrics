@@ -18,6 +18,7 @@ import {
   scopesAreFull,
   type ScoreScope,
 } from "@/lib/scopes";
+import { auditStudentDocuments } from "@/lib/categories";
 import { fmtPct, fmtNumber, timeAgo } from "@/lib/utils";
 
 const SCORE_FIELDS: { key: keyof ScoreBreakdown & string; label: string; cap: number; hint: string }[] = [
@@ -543,12 +544,32 @@ export function StudentDetailModal({
               </div>
             )}
           </div>
-          {student && (
-            <Badge variant={student.status === "VERIFIED" ? "success" : "warning"}>
-              {student.status === "VERIFIED" ? <ShieldCheck className="h-3 w-3" /> : null}
-              {student.status}
-            </Badge>
-          )}
+          {student && (() => {
+            const docAudit = auditStudentDocuments(student.documents);
+            return (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {docAudit.missingCount > 0 ? (
+                  <Badge
+                    variant="destructive"
+                    className="bg-[#fee2e2] text-[#991b1b] border-[#fca5a5] dark:bg-[#450a0a] dark:text-[#fca5a5] gap-1 text-[11px]"
+                    title={`Missing documents: ${docAudit.missingDocLabels.join(", ")}`}
+                  >
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>{docAudit.summaryText}</span>
+                  </Badge>
+                ) : (
+                  <Badge variant="success" className="gap-1 text-[11px]">
+                    <CheckCircle2 className="h-3 w-3" />
+                    <span>Docs Complete</span>
+                  </Badge>
+                )}
+                <Badge variant={student.status === "VERIFIED" ? "success" : "warning"}>
+                  {student.status === "VERIFIED" ? <ShieldCheck className="h-3 w-3" /> : null}
+                  {student.status}
+                </Badge>
+              </div>
+            );
+          })()}
           <Button variant="ghost" size="icon" aria-label="Close" onClick={onClose} className="h-7 w-7 text-[#5c6470] hover:text-[#1c2024] dark:hover:text-white">
             <X className="h-4 w-4" />
           </Button>
@@ -766,19 +787,18 @@ export function StudentDetailModal({
               )}
 
               {/* Document & link verification */}
-              {(student.documents.length > 0 || student.projectLinks.length > 0) && (
-                <section className="rounded-xl border p-4">
-                  <VerificationPanel
-                    documents={student.documents.filter((d) => itemAllowed(d.category, "doc"))}
-                    links={student.projectLinks.filter((l) => itemAllowed(l.category, "link"))}
-                    canScore={canScore}
-                    onChanged={async () => {
-                      const res = await fetch(`/api/students/${studentId}`, { cache: "no-store" });
-                      if (res.ok) setStudent((await res.json()).student);
-                    }}
-                  />
-                </section>
-              )}
+              <section className="rounded-xl border p-4">
+                <VerificationPanel
+                  documents={student.documents.filter((d) => itemAllowed(d.category, "doc"))}
+                  links={student.projectLinks.filter((l) => itemAllowed(l.category, "link"))}
+                  allDocuments={student.documents}
+                  canScore={canScore}
+                  onChanged={async () => {
+                    const res = await fetch(`/api/students/${studentId}`, { cache: "no-store" });
+                    if (res.ok) setStudent((await res.json()).student);
+                  }}
+                />
+              </section>
 
               {/* Score entry panel */}
               <section className={canScore ? "space-y-3" : "hidden"}>

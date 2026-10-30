@@ -10,14 +10,16 @@ import {
   CheckCircle2,
   AlertCircle,
   Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { Badge, Button, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
 import { scopesAreFull, type ScoreScope } from "@/lib/scopes";
 import { SRM_OFFICIAL_METRICS, type StudentDto } from "@/lib/types";
+import { auditStudentDocuments } from "@/lib/categories";
 
-type SortKey = "rank" | "totalScore" | "cgpa" | "name" | "registerNumber";
-type StatusFilter = "ALL" | "PENDING" | "VERIFIED";
+type SortKey = "rank" | "totalScore" | "missingDocs" | "cgpa" | "name" | "registerNumber";
+type StatusFilter = "ALL" | "PENDING" | "VERIFIED" | "MISSING_DOCS";
 type ActiveSection = "STUDENTS" | "SCORES" | "MATRIX" | "REPORTS";
 
 export function getStudentReviewers(s: StudentDto): { finalVerifier: string | null; sectionReviewers: string[] } {
@@ -159,7 +161,13 @@ export function Dashboard({
     let list = students.filter((s) => {
       if (q && !`${s.fullName} ${s.registerNumber} ${s.email}`.toLowerCase().includes(q))
         return false;
-      if (statusFilter !== "ALL" && s.status !== statusFilter) return false;
+      if (statusFilter === "MISSING_DOCS") {
+        const audit = auditStudentDocuments(s.documents);
+        // Exclude students who have uploaded all required documents
+        if (audit.isComplete) return false;
+      } else if (statusFilter !== "ALL" && s.status !== statusFilter) {
+        return false;
+      }
       return true;
     });
 
@@ -177,6 +185,13 @@ export function Dashboard({
           return a.fullName.localeCompare(b.fullName) * dir;
         case "registerNumber":
           return a.registerNumber.localeCompare(b.registerNumber) * dir;
+        case "missingDocs": {
+          // Prioritize students with highest missing documents first
+          const ma = auditStudentDocuments(a.documents).missingCount;
+          const mb = auditStudentDocuments(b.documents).missingCount;
+          if (ma !== mb) return (mb - ma) * dir;
+          return a.registerNumber.localeCompare(b.registerNumber);
+        }
         default:
           return (a.scores.total - b.scores.total) * dir;
       }
@@ -187,10 +202,14 @@ export function Dashboard({
   const stats = useMemo(() => {
     const verifiedCount = students.filter((s) => s.status === "VERIFIED").length;
     const pendingCount = students.filter((s) => s.status === "PENDING").length;
+    const missingDocsCount = students.filter(
+      (s) => auditStudentDocuments(s.documents).missingCount > 0
+    ).length;
     return {
       total: students.length,
       verified: verifiedCount,
       pending: pendingCount,
+      missingDocs: missingDocsCount,
       avgScore: students.length
         ? Math.round(
             (students.reduce((a, s) => a + s.scores.total, 0) / students.length) * 10
@@ -307,7 +326,7 @@ export function Dashboard({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
-          variant={activeSection === "STUDENTS" ? "default" : "outline"}
+          variant={activeSection === "STUDENTS" && statusFilter !== "MISSING_DOCS" ? "default" : "outline"}
           onClick={() => {
             setActiveSection("STUDENTS");
             setStatusFilter("ALL");
@@ -327,6 +346,23 @@ export function Dashboard({
           className="text-xs"
         >
           Review Scores {stats.pending > 0 && `(${stats.pending})`}
+        </Button>
+
+        <Button
+          size="sm"
+          variant={statusFilter === "MISSING_DOCS" ? "default" : "outline"}
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setStatusFilter("MISSING_DOCS");
+          }}
+          className={`text-xs ${
+            statusFilter === "MISSING_DOCS"
+              ? "bg-[#b45309] text-white hover:bg-[#92400e]"
+              : "text-[#b45309] border-[#fcd34d] hover:bg-[#fef3c7] dark:text-[#fcd34d] dark:border-[#78350f] dark:hover:bg-[#451a03]"
+          }`}
+        >
+          <AlertTriangle className="mr-1 h-3 w-3" />
+          <span>Missing Documents {stats.missingDocs > 0 && `(${stats.missingDocs})`}</span>
         </Button>
 
         <Button
@@ -351,7 +387,7 @@ export function Dashboard({
       </div>
 
       {/* 3. Overview Strip — Key Administrative Information */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
         <div
           onClick={() => {
             setActiveSection("STUDENTS");
@@ -384,6 +420,23 @@ export function Dashboard({
           </span>
           <div className="mt-0.5 text-lg font-bold text-[#92540d] dark:text-[#f3b55c]">
             {stats.pending}
+          </div>
+        </div>
+        <div
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setStatusFilter("MISSING_DOCS");
+          }}
+          className={`px-2 border-l border-[#e2ded5] dark:border-[#262f3c] cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36] ${
+            statusFilter === "MISSING_DOCS" && activeSection === "STUDENTS" ? "ring-1 ring-[#b45309]" : ""
+          }`}
+          title="Click to filter students with missing documents"
+        >
+          <span className="text-[11px] font-medium text-[#b45309] dark:text-[#fcd34d]">
+            Missing Documents
+          </span>
+          <div className="mt-0.5 text-lg font-bold text-[#b45309] dark:text-[#fcd34d]">
+            {stats.missingDocs}
           </div>
         </div>
         <div
@@ -599,7 +652,11 @@ export function Dashboard({
           <div className="flex flex-col gap-3 p-4 border-b border-[#e2ded5] dark:border-[#262f3c] sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-[#1c2024] dark:text-white">
-                {activeSection === "SCORES" ? "Pending Reviews" : "All Registered Students"}
+                {statusFilter === "MISSING_DOCS"
+                  ? "Students with Missing Documents"
+                  : activeSection === "SCORES"
+                  ? "Pending Reviews"
+                  : "All Registered Students"}
               </h2>
               <span className="rounded bg-[#f0ece4] px-2 py-0.5 text-xs font-semibold text-[#474f5a] dark:bg-[#232b36] dark:text-[#cbd5e1]">
                 {filtered.length}
@@ -626,6 +683,7 @@ export function Dashboard({
                 <option value="ALL">All Statuses</option>
                 <option value="PENDING">Pending Review</option>
                 <option value="VERIFIED">Verified Only</option>
+                <option value="MISSING_DOCS">Missing Documents</option>
               </select>
 
               <select
@@ -635,6 +693,7 @@ export function Dashboard({
               >
                 <option value="rank">Sort by Rank</option>
                 <option value="totalScore">Sort by Matrix Score</option>
+                <option value="missingDocs">Sort by Missing Documents</option>
                 <option value="cgpa">Sort by CGPA</option>
                 <option value="name">Sort by Student Name</option>
                 <option value="registerNumber">Sort by Reg. Number</option>
@@ -652,6 +711,7 @@ export function Dashboard({
                   <th>Student Name</th>
                   {canSeeAcademic && <th>CGPA</th>}
                   <th>Status</th>
+                  <th>Documents</th>
                   <th className="text-right">Matrix Score</th>
                   <th className="text-right w-44">Actions</th>
                 </tr>
@@ -659,7 +719,7 @@ export function Dashboard({
               <tbody>
                 {loading && (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-[#5c6470]">
+                    <td colSpan={8} className="py-8 text-center text-[#5c6470]">
                       <Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#165b33]" />
                       Loading student records…
                     </td>
@@ -667,161 +727,192 @@ export function Dashboard({
                 )}
                 {!loading && filtered.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-[#5c6470]">
-                      No students found matching your search.
+                    <td colSpan={8} className="py-8 text-center text-[#5c6470]">
+                      {statusFilter === "MISSING_DOCS"
+                        ? "No students found with missing documents. All candidates have uploaded required verification documents."
+                        : "No students found matching your search."}
                     </td>
                   </tr>
                 )}
-                {filtered.map((s) => (
-                  <tr key={s.id}>
-                    {/* Rank */}
-                    <td className="font-semibold text-[#165b33] dark:text-[#78d69f]">
-                      {s.rank ? `#${s.rank}` : "—"}
-                    </td>
-
-                    {/* Register Number */}
-                    <td className="font-mono font-medium text-[#1c2024] dark:text-[#f0ede6]">
-                      {s.registerNumber}
-                    </td>
-
-                    {/* Student Name */}
-                    <td>
-                      <div className="font-semibold text-[#1c2024] dark:text-white">
-                        {s.fullName}
-                      </div>
-                      <div className="text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
-                        {s.email}
-                      </div>
-                    </td>
-
-                    {/* CGPA (visible only to coordinators with the academic scope) */}
-                    {canSeeAcademic && (
-                      <td className="font-medium text-[#1c2024] dark:text-[#f0ede6]">
-                        {s.cgpa.toFixed(2)}
+                {filtered.map((s) => {
+                  const docAudit = auditStudentDocuments(s.documents);
+                  return (
+                    <tr key={s.id}>
+                      {/* Rank */}
+                      <td className="font-semibold text-[#165b33] dark:text-[#78d69f]">
+                        {s.rank ? `#${s.rank}` : "—"}
                       </td>
-                    )}
 
-                    {/* Status — with WHO signed it off & which coordinators reviewed */}
-                    <td>
-                      {(() => {
-                        const { finalVerifier, sectionReviewers } = getStudentReviewers(s);
-                        return (
-                          <div className="space-y-1">
-                            {s.status === "VERIFIED" ? (
-                              <>
-                                <Badge variant="success">Verified</Badge>
-                                {finalVerifier && (
-                                  <div
-                                    className="text-[11px] font-medium leading-tight text-[#165b33] dark:text-[#78d69f]"
-                                    title={s.verifiedAt ? `Signed off ${new Date(s.verifiedAt).toLocaleString()}` : "Verifier of record"}
-                                  >
-                                    ✓ by {finalVerifier}
-                                  </div>
-                                )}
-                                {sectionReviewers.length > 0 && (
-                                  <div
-                                    className="text-[10px] leading-tight text-[#5c6470] dark:text-[#94a3b8]"
-                                    title={`Section reviewers: ${sectionReviewers.join(", ")}`}
-                                  >
-                                    Reviewers: {sectionReviewers.slice(0, 2).join(", ")}
-                                    {sectionReviewers.length > 2 ? ` +${sectionReviewers.length - 2}` : ""}
-                                  </div>
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                {sectionReviewers.length > 0 ? (
-                                  <>
-                                    <Badge variant="warning" className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300">
-                                      In Review
-                                    </Badge>
+                      {/* Register Number */}
+                      <td className="font-mono font-medium text-[#1c2024] dark:text-[#f0ede6]">
+                        {s.registerNumber}
+                      </td>
+
+                      {/* Student Name */}
+                      <td>
+                        <div className="font-semibold text-[#1c2024] dark:text-white">
+                          {s.fullName}
+                        </div>
+                        <div className="text-[11px] text-[#5c6470] dark:text-[#94a3b8] flex items-center gap-1.5 flex-wrap">
+                          <span>{s.email}</span>
+                          {docAudit.missingCount > 0 && (
+                            <span className="font-medium text-[#b45309] dark:text-[#fcd34d] inline-flex items-center gap-0.5">
+                              · <AlertTriangle className="h-3 w-3 inline text-[#d97706]" /> {docAudit.summaryText}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* CGPA (visible only to coordinators with the academic scope) */}
+                      {canSeeAcademic && (
+                        <td className="font-medium text-[#1c2024] dark:text-[#f0ede6]">
+                          {s.cgpa.toFixed(2)}
+                        </td>
+                      )}
+
+                      {/* Status — with WHO signed it off & which coordinators reviewed */}
+                      <td>
+                        {(() => {
+                          const { finalVerifier, sectionReviewers } = getStudentReviewers(s);
+                          return (
+                            <div className="space-y-1">
+                              {s.status === "VERIFIED" ? (
+                                <>
+                                  <Badge variant="success">Verified</Badge>
+                                  {finalVerifier && (
                                     <div
-                                      className="text-[11px] leading-tight text-[#5c6470] dark:text-[#94a3b8]"
-                                      title={`Coordinators who reviewed sections: ${sectionReviewers.join(", ")}`}
+                                      className="text-[11px] font-medium leading-tight text-[#165b33] dark:text-[#78d69f]"
+                                      title={s.verifiedAt ? `Signed off ${new Date(s.verifiedAt).toLocaleString()}` : "Verifier of record"}
                                     >
-                                      Reviewed: <span className="font-medium text-[#1c2024] dark:text-white">{sectionReviewers.slice(0, 2).join(", ")}{sectionReviewers.length > 2 ? ` +${sectionReviewers.length - 2}` : ""}</span>
+                                      ✓ by {finalVerifier}
                                     </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Badge variant="outline" className="text-stone-500 border-stone-300 dark:border-stone-700">
-                                      Pending
-                                    </Badge>
-                                    <div className="text-[10px] text-[#5c6470] dark:text-[#94a3b8]">
-                                      Awaiting review
+                                  )}
+                                  {sectionReviewers.length > 0 && (
+                                    <div
+                                      className="text-[10px] leading-tight text-[#5c6470] dark:text-[#94a3b8]"
+                                      title={`Section reviewers: ${sectionReviewers.join(", ")}`}
+                                    >
+                                      Reviewers: {sectionReviewers.slice(0, 2).join(", ")}
+                                      {sectionReviewers.length > 2 ? ` +${sectionReviewers.length - 2}` : ""}
                                     </div>
-                                  </>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </td>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  {sectionReviewers.length > 0 ? (
+                                    <>
+                                      <Badge variant="warning" className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300">
+                                        In Review
+                                      </Badge>
+                                      <div
+                                        className="text-[11px] leading-tight text-[#5c6470] dark:text-[#94a3b8]"
+                                        title={`Coordinators who reviewed sections: ${sectionReviewers.join(", ")}`}
+                                      >
+                                        Reviewed: <span className="font-medium text-[#1c2024] dark:text-white">{sectionReviewers.slice(0, 2).join(", ")}{sectionReviewers.length > 2 ? ` +${sectionReviewers.length - 2}` : ""}</span>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Badge variant="outline" className="text-stone-500 border-stone-300 dark:border-stone-700">
+                                        Pending
+                                      </Badge>
+                                      <div className="text-[10px] text-[#5c6470] dark:text-[#94a3b8]">
+                                        Awaiting review
+                                      </div>
+                                    </>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
 
-                    {/* Matrix Score */}
-                    <td className="text-right">
-                      <span className="font-bold text-[#1c2024] dark:text-white">
-                        {s.scores.total.toFixed(1)}
-                      </span>
-                      <span className="text-[11px] text-[#5c6470]"> / 100</span>
-                    </td>
+                      {/* Document Verification Status */}
+                      <td>
+                        {docAudit.isComplete ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded bg-[#eaf4ed] px-2 py-0.5 text-xs font-semibold text-[#165b33] dark:bg-[#133822] dark:text-[#78d69f]"
+                            title="All required marksheets uploaded"
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>Complete ({docAudit.uploadedCount}/{docAudit.requiredTotal})</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 rounded bg-[#fef3c7] px-2 py-0.5 text-xs font-semibold text-[#92400e] dark:bg-[#3d2f13] dark:text-[#fbbf24]"
+                            title={`Missing required documents: ${docAudit.missingDocLabels.join(", ")}`}
+                          >
+                            <AlertTriangle className="h-3 w-3 text-[#d97706]" />
+                            <span>{docAudit.summaryText}</span>
+                          </span>
+                        )}
+                      </td>
 
-                    {/* Actions: Simple Text Buttons [ View ] and [ Edit Score ] */}
-                    <td className="text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2.5 text-xs"
-                          onClick={() => setSelectedId(s.id)}
-                        >
-                          View
-                        </Button>
+                      {/* Matrix Score */}
+                      <td className="text-right">
+                        <span className="font-bold text-[#1c2024] dark:text-white">
+                          {s.scores.total.toFixed(1)}
+                        </span>
+                        <span className="text-[11px] text-[#5c6470]"> / 100</span>
+                      </td>
 
-                        <Button
-                          size="sm"
-                          className="h-7 px-2.5 text-xs bg-[#165b33] text-white hover:bg-[#124929]"
-                          onClick={() => setSelectedId(s.id)}
-                        >
-                          Edit Score
-                        </Button>
+                      {/* Actions: Simple Text Buttons [ View ] and [ Edit Score ] */}
+                      <td className="text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2.5 text-xs"
+                            onClick={() => setSelectedId(s.id)}
+                          >
+                            View
+                          </Button>
 
-                        {isSuperAdmin && (
+                          <Button
+                            size="sm"
+                            className="h-7 px-2.5 text-xs bg-[#165b33] text-white hover:bg-[#124929]"
+                            onClick={() => setSelectedId(s.id)}
+                          >
+                            Edit Score
+                          </Button>
+
+                          {isSuperAdmin && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs text-[#5c6470] hover:text-[#a82424]"
+                              title="Delete profile permanently"
+                              disabled={busyId === s.id}
+                              onClick={(e) => removeStudent(s, e)}
+                            >
+                              {busyId === s.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3 w-3" />
+                              )}
+                            </Button>
+                          )}
+
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 px-2 text-xs text-[#5c6470] hover:text-[#a82424]"
-                            title="Delete profile permanently"
+                            title="Refresh live GitHub and LeetCode data"
                             disabled={busyId === s.id}
-                            onClick={(e) => removeStudent(s, e)}
+                            onClick={(e) => rescrape(s, e)}
+                            className="h-7 px-2 text-xs text-[#5c6470] hover:text-[#1c2024]"
                           >
                             {busyId === s.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <Loader2 className="h-3 w-3 animate-spin text-[#165b33]" />
                             ) : (
-                              <Trash2 className="h-3 w-3" />
+                              <RefreshCw className="h-3 w-3" />
                             )}
                           </Button>
-                        )}
-
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          title="Refresh live GitHub and LeetCode data"
-                          disabled={busyId === s.id}
-                          onClick={(e) => rescrape(s, e)}
-                          className="h-7 px-2 text-xs text-[#5c6470] hover:text-[#1c2024]"
-                        >
-                          {busyId === s.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin text-[#165b33]" />
-                          ) : (
-                            <RefreshCw className="h-3 w-3" />
-                          )}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
