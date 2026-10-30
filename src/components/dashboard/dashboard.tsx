@@ -19,7 +19,8 @@ import { SRM_OFFICIAL_METRICS, type StudentDto } from "@/lib/types";
 import { auditStudentDocuments } from "@/lib/categories";
 
 type SortKey = "rank" | "totalScore" | "missingDocs" | "cgpa" | "name" | "registerNumber";
-type StatusFilter = "ALL" | "PENDING" | "VERIFIED" | "MISSING_DOCS";
+type StatusFilter = "ALL" | "PENDING" | "VERIFIED";
+type DocFilter = "ALL" | "COMPLETE" | "MISSING" | "NO_DOCS";
 type ActiveSection = "STUDENTS" | "SCORES" | "MATRIX" | "REPORTS";
 
 export function getStudentReviewers(s: StudentDto): { finalVerifier: string | null; sectionReviewers: string[] } {
@@ -73,6 +74,7 @@ export function Dashboard({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [docFilter, setDocFilter] = useState<DocFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -161,12 +163,17 @@ export function Dashboard({
     let list = students.filter((s) => {
       if (q && !`${s.fullName} ${s.registerNumber} ${s.email}`.toLowerCase().includes(q))
         return false;
-      if (statusFilter === "MISSING_DOCS") {
-        const audit = auditStudentDocuments(s.documents);
-        // Exclude students who have uploaded all required documents
-        if (audit.isComplete) return false;
-      } else if (statusFilter !== "ALL" && s.status !== statusFilter) {
+      if (statusFilter !== "ALL" && s.status !== statusFilter) {
         return false;
+      }
+      if (docFilter === "COMPLETE") {
+        const audit = auditStudentDocuments(s.documents);
+        if (!audit.isComplete) return false;
+      } else if (docFilter === "MISSING") {
+        const audit = auditStudentDocuments(s.documents);
+        if (audit.isComplete) return false;
+      } else if (docFilter === "NO_DOCS") {
+        if (s.documents && s.documents.length > 0) return false;
       }
       return true;
     });
@@ -197,7 +204,7 @@ export function Dashboard({
       }
     });
     return list;
-  }, [students, query, statusFilter, sortKey, sortDir]);
+  }, [students, query, statusFilter, docFilter, sortKey, sortDir]);
 
   const stats = useMemo(() => {
     const verifiedCount = students.filter((s) => s.status === "VERIFIED").length;
@@ -205,11 +212,19 @@ export function Dashboard({
     const missingDocsCount = students.filter(
       (s) => auditStudentDocuments(s.documents).missingCount > 0
     ).length;
+    const docsCompleteCount = students.filter(
+      (s) => auditStudentDocuments(s.documents).isComplete
+    ).length;
+    const noDocsCount = students.filter(
+      (s) => !s.documents || s.documents.length === 0
+    ).length;
     return {
       total: students.length,
       verified: verifiedCount,
       pending: pendingCount,
       missingDocs: missingDocsCount,
+      docsComplete: docsCompleteCount,
+      noDocs: noDocsCount,
       avgScore: students.length
         ? Math.round(
             (students.reduce((a, s) => a + s.scores.total, 0) / students.length) * 10
@@ -326,14 +341,15 @@ export function Dashboard({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
-          variant={activeSection === "STUDENTS" && statusFilter !== "MISSING_DOCS" ? "default" : "outline"}
+          variant={activeSection === "STUDENTS" && statusFilter === "ALL" && docFilter === "ALL" ? "default" : "outline"}
           onClick={() => {
             setActiveSection("STUDENTS");
             setStatusFilter("ALL");
+            setDocFilter("ALL");
           }}
           className="text-xs"
         >
-          View Students
+          All Students
         </Button>
 
         <Button
@@ -342,6 +358,7 @@ export function Dashboard({
           onClick={() => {
             setActiveSection("SCORES");
             setStatusFilter("PENDING");
+            setDocFilter("ALL");
           }}
           className="text-xs"
         >
@@ -350,19 +367,56 @@ export function Dashboard({
 
         <Button
           size="sm"
-          variant={statusFilter === "MISSING_DOCS" ? "default" : "outline"}
+          variant={docFilter === "COMPLETE" ? "default" : "outline"}
           onClick={() => {
             setActiveSection("STUDENTS");
-            setStatusFilter("MISSING_DOCS");
+            setDocFilter("COMPLETE");
+            setStatusFilter("ALL");
           }}
           className={`text-xs ${
-            statusFilter === "MISSING_DOCS"
+            docFilter === "COMPLETE"
+              ? "bg-[#165b33] text-white hover:bg-[#124929]"
+              : "text-[#165b33] border-[#b8ddc4] hover:bg-[#eaf4ed] dark:text-[#78d69f] dark:border-[#265335] dark:hover:bg-[#133822]"
+          }`}
+        >
+          <CheckCircle2 className="mr-1 h-3 w-3" />
+          <span>Docs Complete {stats.docsComplete > 0 && `(${stats.docsComplete})`}</span>
+        </Button>
+
+        <Button
+          size="sm"
+          variant={docFilter === "MISSING" ? "default" : "outline"}
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setDocFilter("MISSING");
+            setStatusFilter("ALL");
+          }}
+          className={`text-xs ${
+            docFilter === "MISSING"
               ? "bg-[#b45309] text-white hover:bg-[#92400e]"
               : "text-[#b45309] border-[#fcd34d] hover:bg-[#fef3c7] dark:text-[#fcd34d] dark:border-[#78350f] dark:hover:bg-[#451a03]"
           }`}
         >
           <AlertTriangle className="mr-1 h-3 w-3" />
-          <span>Missing Documents {stats.missingDocs > 0 && `(${stats.missingDocs})`}</span>
+          <span>Missing Docs {stats.missingDocs > 0 && `(${stats.missingDocs})`}</span>
+        </Button>
+
+        <Button
+          size="sm"
+          variant={docFilter === "NO_DOCS" ? "default" : "outline"}
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setDocFilter("NO_DOCS");
+            setStatusFilter("ALL");
+          }}
+          className={`text-xs ${
+            docFilter === "NO_DOCS"
+              ? "bg-[#991b1b] text-white hover:bg-[#7f1d1d]"
+              : "text-[#991b1b] border-[#fca5a5] hover:bg-[#fee2e2] dark:text-[#fca5a5] dark:border-[#7f1d1d] dark:hover:bg-[#450a0a]"
+          }`}
+        >
+          <AlertCircle className="mr-1 h-3 w-3" />
+          <span>No Docs {stats.noDocs > 0 && `(${stats.noDocs})`}</span>
         </Button>
 
         <Button
@@ -387,19 +441,20 @@ export function Dashboard({
       </div>
 
       {/* 3. Overview Strip — Key Administrative Information */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 rounded-md border border-[#e2ded5] bg-white p-3.5 dark:border-[#262f3c] dark:bg-[#1b222c]">
         <div
           onClick={() => {
             setActiveSection("STUDENTS");
             setStatusFilter("ALL");
+            setDocFilter("ALL");
           }}
           className={`px-2 cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36] ${
-            statusFilter === "ALL" && activeSection === "STUDENTS" ? "ring-1 ring-[#165b33]" : ""
+            statusFilter === "ALL" && docFilter === "ALL" && activeSection === "STUDENTS" ? "ring-1 ring-[#165b33]" : ""
           }`}
           title="Click to view all registered students"
         >
           <span className="text-[11px] font-medium text-[#5c6470] dark:text-[#94a3b8]">
-            Registered Students (All)
+            Registered Students
           </span>
           <div className="mt-0.5 text-lg font-bold text-[#1c2024] dark:text-white">
             {stats.total}
@@ -409,6 +464,7 @@ export function Dashboard({
           onClick={() => {
             setActiveSection("STUDENTS");
             setStatusFilter("PENDING");
+            setDocFilter("ALL");
           }}
           className={`px-2 border-l border-[#e2ded5] dark:border-[#262f3c] cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36] ${
             statusFilter === "PENDING" && activeSection === "STUDENTS" ? "ring-1 ring-[#92540d]" : ""
@@ -425,15 +481,34 @@ export function Dashboard({
         <div
           onClick={() => {
             setActiveSection("STUDENTS");
-            setStatusFilter("MISSING_DOCS");
+            setDocFilter("COMPLETE");
+            setStatusFilter("ALL");
           }}
           className={`px-2 border-l border-[#e2ded5] dark:border-[#262f3c] cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36] ${
-            statusFilter === "MISSING_DOCS" && activeSection === "STUDENTS" ? "ring-1 ring-[#b45309]" : ""
+            docFilter === "COMPLETE" && activeSection === "STUDENTS" ? "ring-1 ring-[#165b33]" : ""
           }`}
-          title="Click to filter students with missing documents"
+          title="Click to filter students with all required marksheets submitted"
+        >
+          <span className="text-[11px] font-medium text-[#165b33] dark:text-[#78d69f]">
+            Docs Complete
+          </span>
+          <div className="mt-0.5 text-lg font-bold text-[#165b33] dark:text-[#78d69f]">
+            {stats.docsComplete}
+          </div>
+        </div>
+        <div
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setDocFilter("MISSING");
+            setStatusFilter("ALL");
+          }}
+          className={`px-2 border-l border-[#e2ded5] dark:border-[#262f3c] cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36] ${
+            docFilter === "MISSING" && activeSection === "STUDENTS" ? "ring-1 ring-[#b45309]" : ""
+          }`}
+          title="Click to filter students with missing required marksheets"
         >
           <span className="text-[11px] font-medium text-[#b45309] dark:text-[#fcd34d]">
-            Missing Documents
+            Missing Docs
           </span>
           <div className="mt-0.5 text-lg font-bold text-[#b45309] dark:text-[#fcd34d]">
             {stats.missingDocs}
@@ -443,6 +518,7 @@ export function Dashboard({
           onClick={() => {
             setActiveSection("STUDENTS");
             setStatusFilter("VERIFIED");
+            setDocFilter("ALL");
           }}
           className={`px-2 border-l border-[#e2ded5] dark:border-[#262f3c] cursor-pointer rounded p-1 transition-colors hover:bg-[#f6f5f2] dark:hover:bg-[#222a36] ${
             statusFilter === "VERIFIED" && activeSection === "STUDENTS" ? "ring-1 ring-[#165b33]" : ""
@@ -652,10 +728,16 @@ export function Dashboard({
           <div className="flex flex-col gap-3 p-4 border-b border-[#e2ded5] dark:border-[#262f3c] sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-[#1c2024] dark:text-white">
-                {statusFilter === "MISSING_DOCS"
+                {docFilter === "MISSING"
                   ? "Students with Missing Documents"
-                  : activeSection === "SCORES"
+                  : docFilter === "COMPLETE"
+                  ? "Students with All Documents Submitted"
+                  : docFilter === "NO_DOCS"
+                  ? "Students with No Documents Uploaded"
+                  : statusFilter === "PENDING"
                   ? "Pending Reviews"
+                  : statusFilter === "VERIFIED"
+                  ? "Verified Students"
                   : "All Registered Students"}
               </h2>
               <span className="rounded bg-[#f0ece4] px-2 py-0.5 text-xs font-semibold text-[#474f5a] dark:bg-[#232b36] dark:text-[#cbd5e1]">
@@ -665,7 +747,7 @@ export function Dashboard({
 
             {/* Clean, straightforward Search & Filter Controls */}
             <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[200px]">
+              <div className="relative min-w-[180px]">
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#88909c]" />
                 <Input
                   placeholder="Search student or register no..."
@@ -675,15 +757,29 @@ export function Dashboard({
                 />
               </div>
 
+              {/* Document Submission Filter */}
+              <select
+                value={docFilter}
+                onChange={(e) => setDocFilter(e.target.value as DocFilter)}
+                className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2.5 text-xs font-medium text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
+                title="Filter by document submission status"
+              >
+                <option value="ALL">All Document States</option>
+                <option value="COMPLETE">✓ Docs Complete (All Submitted)</option>
+                <option value="MISSING">⚠️ Missing Required Marksheets</option>
+                <option value="NO_DOCS">❌ No Documents Uploaded (0 files)</option>
+              </select>
+
+              {/* Evaluation Status Filter */}
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                 className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2.5 text-xs text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
+                title="Filter by coordinator verification status"
               >
-                <option value="ALL">All Statuses</option>
-                <option value="PENDING">Pending Review</option>
-                <option value="VERIFIED">Verified Only</option>
-                <option value="MISSING_DOCS">Missing Documents</option>
+                <option value="ALL">All Evaluation States</option>
+                <option value="PENDING">Pending Evaluation</option>
+                <option value="VERIFIED">Verified Candidates</option>
               </select>
 
               <select
@@ -728,8 +824,12 @@ export function Dashboard({
                 {!loading && filtered.length === 0 && (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-[#5c6470]">
-                      {statusFilter === "MISSING_DOCS"
+                      {docFilter === "MISSING"
                         ? "No students found with missing documents. All candidates have uploaded required verification documents."
+                        : docFilter === "COMPLETE"
+                        ? "No students found who have completed all required document uploads yet."
+                        : docFilter === "NO_DOCS"
+                        ? "No students without uploaded documents found."
                         : "No students found matching your search."}
                     </td>
                   </tr>
