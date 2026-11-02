@@ -11,12 +11,15 @@ import {
   AlertCircle,
   Trash2,
   AlertTriangle,
+  Share2,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Badge, Button, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
+import { MissingDocsModal } from "@/components/dashboard/missing-docs-modal";
 import { scopesAreFull, type ScoreScope } from "@/lib/scopes";
 import { SRM_OFFICIAL_METRICS, type StudentDto } from "@/lib/types";
-import { auditStudentDocuments } from "@/lib/categories";
+import { auditStudentDocuments, docCategoryLabel } from "@/lib/categories";
 
 type SortKey = "rank" | "totalScore" | "missingDocs" | "cgpa" | "name" | "registerNumber";
 type StatusFilter = "ALL" | "PENDING" | "VERIFIED";
@@ -75,6 +78,8 @@ export function Dashboard({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [docFilter, setDocFilter] = useState<DocFilter>("ALL");
+  const [topicFilter, setTopicFilter] = useState<string>("ALL");
+  const [showShareModal, setShowShareModal] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -128,6 +133,51 @@ export function Dashboard({
     }
   }
 
+  // Export currently filtered students directly as CSV
+  function exportFilteredToCsv() {
+    if (!filtered.length) return;
+    const headers = [
+      "Rank",
+      "Register Number",
+      "Full Name",
+      "Email",
+      "Faculty Advisor",
+      "Document Status",
+      "Missing Documents",
+      "Total Uploads",
+      "Total Score (100)",
+      "Evaluation Status",
+    ];
+
+    const rows = filtered.map((s) => {
+      const audit = auditStudentDocuments(s.documents);
+      return [
+        s.rank ?? "—",
+        `"${s.registerNumber}"`,
+        `"${s.fullName}"`,
+        `"${s.email}"`,
+        `"${s.facultyAdvisor || "—"}"`,
+        `"${audit.summaryText}"`,
+        `"${audit.missingDocLabels.join("; ") || "None"}"`,
+        s.documents.length,
+        s.scores.total,
+        s.status,
+      ];
+    });
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const filterName = topicFilter !== "ALL" ? `_${topicFilter}` : docFilter !== "ALL" ? `_${docFilter}` : "";
+    link.download = `SRM_Placement_Candidates${filterName}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   // Excel report is generated server-side (real .xlsx) and access-checked:
   // coordinators/admins only, scoped to the viewer's rubric sections.
   async function exportToCsv() {
@@ -161,7 +211,7 @@ export function Dashboard({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = students.filter((s) => {
-      if (q && !`${s.fullName} ${s.registerNumber} ${s.email}`.toLowerCase().includes(q))
+      if (q && !`${s.fullName} ${s.registerNumber} ${s.email} ${s.facultyAdvisor || ""}`.toLowerCase().includes(q))
         return false;
       if (statusFilter !== "ALL" && s.status !== statusFilter) {
         return false;
@@ -169,12 +219,21 @@ export function Dashboard({
       if (docFilter === "COMPLETE") {
         const audit = auditStudentDocuments(s.documents);
         if (!audit.isComplete) return false;
-      } else if (docFilter === "MISSING") {
+      } else if (docFilter === "MISSING" && topicFilter === "ALL") {
         const audit = auditStudentDocuments(s.documents);
         if (audit.isComplete) return false;
       } else if (docFilter === "NO_DOCS") {
         if (s.documents && s.documents.length > 0) return false;
       }
+
+      // Topic-specific missing filter (e.g. 10th marksheet, internship, etc.)
+      if (topicFilter !== "ALL") {
+        const hasTopic = (s.documents ?? []).some(
+          (d) => d.category === topicFilter && d.status !== "REJECTED"
+        );
+        if (hasTopic) return false;
+      }
+
       return true;
     });
 
@@ -204,7 +263,7 @@ export function Dashboard({
       }
     });
     return list;
-  }, [students, query, statusFilter, docFilter, sortKey, sortDir]);
+  }, [students, query, statusFilter, docFilter, topicFilter, sortKey, sortDir]);
 
   const stats = useMemo(() => {
     const verifiedCount = students.filter((s) => s.status === "VERIFIED").length;
@@ -437,6 +496,17 @@ export function Dashboard({
           className="text-xs"
         >
           View Reports
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setShowShareModal(true)}
+          className="text-xs text-[#0284c7] border-[#38bdf8] hover:bg-[#f0f9ff] dark:text-[#38bdf8] dark:border-[#0284c7] dark:hover:bg-[#082f49]"
+          title="Open shareable defaulters notice grouped by topic"
+        >
+          <Share2 className="mr-1 h-3.5 w-3.5" />
+          <span>Share Defaulters Notice</span>
         </Button>
       </div>
 
@@ -728,7 +798,9 @@ export function Dashboard({
           <div className="flex flex-col gap-3 p-4 border-b border-[#e2ded5] dark:border-[#262f3c] sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-[#1c2024] dark:text-white">
-                {docFilter === "MISSING"
+                {topicFilter !== "ALL"
+                  ? `Students Missing: ${docCategoryLabel(topicFilter)}`
+                  : docFilter === "MISSING"
                   ? "Students with Missing Documents"
                   : docFilter === "COMPLETE"
                   ? "Students with All Documents Submitted"
@@ -747,7 +819,7 @@ export function Dashboard({
 
             {/* Clean, straightforward Search & Filter Controls */}
             <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[180px]">
+              <div className="relative min-w-[160px]">
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#88909c]" />
                 <Input
                   placeholder="Search student or register no..."
@@ -757,11 +829,17 @@ export function Dashboard({
                 />
               </div>
 
-              {/* Document Submission Filter */}
+              {/* Document Submission Status Filter */}
               <select
                 value={docFilter}
-                onChange={(e) => setDocFilter(e.target.value as DocFilter)}
-                className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2.5 text-xs font-medium text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
+                onChange={(e) => {
+                  const val = e.target.value as DocFilter;
+                  setDocFilter(val);
+                  if (val === "ALL" || val === "COMPLETE" || val === "NO_DOCS") {
+                    setTopicFilter("ALL");
+                  }
+                }}
+                className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2 text-xs font-medium text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
                 title="Filter by document submission status"
               >
                 <option value="ALL">All Document States</option>
@@ -770,11 +848,48 @@ export function Dashboard({
                 <option value="NO_DOCS">❌ No Documents Uploaded (0 files)</option>
               </select>
 
+              {/* Specific Missing Document Topic / Category Filter */}
+              <select
+                value={topicFilter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setTopicFilter(val);
+                  if (val !== "ALL") {
+                    setDocFilter("MISSING");
+                  }
+                }}
+                className={`h-8 rounded-md border px-2 text-xs font-medium outline-none transition-colors ${
+                  topicFilter !== "ALL"
+                    ? "border-[#b45309] bg-[#fef3c7] text-[#92400e] dark:border-[#78350f] dark:bg-[#381e05] dark:text-[#fcd34d]"
+                    : "border-[#d8d3c7] bg-white text-[#1c2024] dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
+                }`}
+                title="Filter by specific missing document topic"
+              >
+                <option value="ALL">All Missing Topics</option>
+                <optgroup label="Mandatory Marksheets">
+                  <option value="TENTH_MARKSHEET">Missing: 10th Marksheet</option>
+                  <option value="TWELFTH_MARKSHEET">Missing: 12th Marksheet</option>
+                  <option value="CGPA_MARKSHEET">Missing: CGPA Marksheet</option>
+                </optgroup>
+                <optgroup label="Semester Grade Reports">
+                  <option value="SEM1_MARKSHEET">Missing: Semester 1 SGPA</option>
+                  <option value="SEM2_MARKSHEET">Missing: Semester 2 SGPA</option>
+                </optgroup>
+                <optgroup label="Experience & Credentials">
+                  <option value="INTERNSHIP">Missing: Internship Proof</option>
+                  <option value="SKILL_CERT">Missing: Global Certifications</option>
+                  <option value="COMPETITION">Missing: Hackathons Won</option>
+                  <option value="INHOUSE_PROJECT">Missing: In-House UROP/SERI</option>
+                  <option value="MEMBERSHIP">Missing: Professional Membership</option>
+                  <option value="SHL">Missing: SHL Assessment</option>
+                </optgroup>
+              </select>
+
               {/* Evaluation Status Filter */}
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2.5 text-xs text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
+                className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2 text-xs text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
                 title="Filter by coordinator verification status"
               >
                 <option value="ALL">All Evaluation States</option>
@@ -782,10 +897,11 @@ export function Dashboard({
                 <option value="VERIFIED">Verified Candidates</option>
               </select>
 
+              {/* Sort Key */}
               <select
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2.5 text-xs text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
+                className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2 text-xs text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
               >
                 <option value="rank">Sort by Rank</option>
                 <option value="totalScore">Sort by Matrix Score</option>
@@ -794,6 +910,30 @@ export function Dashboard({
                 <option value="name">Sort by Student Name</option>
                 <option value="registerNumber">Sort by Reg. Number</option>
               </select>
+
+              {/* Export Filtered Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportFilteredToCsv}
+                disabled={!filtered.length}
+                className="h-8 text-xs border-[#b8ddc4] text-[#165b33] hover:bg-[#eaf4ed] dark:border-[#265335] dark:text-[#78d69f]"
+                title="Download currently filtered students as CSV"
+              >
+                <Download className="mr-1 h-3 w-3" />
+                <span>Export ({filtered.length})</span>
+              </Button>
+
+              {/* Share Defaulters Notice Button */}
+              <Button
+                size="sm"
+                onClick={() => setShowShareModal(true)}
+                className="h-8 text-xs bg-[#0284c7] hover:bg-[#0369a1] text-white"
+                title="Share formatted defaulters notice"
+              >
+                <Share2 className="mr-1 h-3 w-3" />
+                <span>Share Notice</span>
+              </Button>
             </div>
           </div>
 
@@ -1028,6 +1168,16 @@ export function Dashboard({
           permissionScopes={permissionScopes}
           onClose={() => setSelectedId(null)}
           onChanged={load}
+        />
+      )}
+
+      {/* Share / Missing Documents Defaulters Notice Modal */}
+      {showShareModal && (
+        <MissingDocsModal
+          isOpen={showShareModal}
+          students={students}
+          initialTopic={topicFilter !== "ALL" ? topicFilter : "ALL_REQUIRED"}
+          onClose={() => setShowShareModal(false)}
         />
       )}
     </div>
