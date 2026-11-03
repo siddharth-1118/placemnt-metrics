@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   Share2,
   FileSpreadsheet,
+  Bell,
+  Send,
 } from "lucide-react";
 import { Badge, Button, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
@@ -80,6 +82,7 @@ export function Dashboard({
   const [docFilter, setDocFilter] = useState<DocFilter>("ALL");
   const [topicFilter, setTopicFilter] = useState<string>("ALL");
   const [showShareModal, setShowShareModal] = useState(false);
+  const [modalInitialTab, setModalInitialTab] = useState<"broadcast" | "share" | "roster">("broadcast");
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -501,12 +504,29 @@ export function Dashboard({
         <Button
           size="sm"
           variant="outline"
-          onClick={() => setShowShareModal(true)}
+          onClick={() => {
+            setModalInitialTab("broadcast");
+            setShowShareModal(true);
+          }}
+          className="text-xs text-[#b45309] border-[#f59e0b] hover:bg-[#fffbeb] dark:text-[#fcd34d] dark:border-[#b45309] dark:hover:bg-[#451a03]"
+          title="Send in-app reminder messages to students with missing documents"
+        >
+          <Bell className="mr-1 h-3.5 w-3.5" />
+          <span>Send Reminders</span>
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setModalInitialTab("share");
+            setShowShareModal(true);
+          }}
           className="text-xs text-[#0284c7] border-[#38bdf8] hover:bg-[#f0f9ff] dark:text-[#38bdf8] dark:border-[#0284c7] dark:hover:bg-[#082f49]"
           title="Open shareable defaulters notice grouped by topic"
         >
           <Share2 className="mr-1 h-3.5 w-3.5" />
-          <span>Share Defaulters Notice</span>
+          <span>Share Defaulters</span>
         </Button>
       </div>
 
@@ -1177,6 +1197,7 @@ export function Dashboard({
           isOpen={showShareModal}
           students={students}
           initialTopic={topicFilter !== "ALL" ? topicFilter : "ALL_REQUIRED"}
+          initialTab={modalInitialTab}
           onClose={() => setShowShareModal(false)}
         />
       )}
