@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
   Bell,
   Check,
+  CheckCircle2,
   Copy,
   Download,
   ExternalLink,
@@ -28,23 +29,27 @@ interface MissingDocsModalProps {
   students: StudentDto[];
   isOpen: boolean;
   initialTopic?: string;
-  initialTab?: "broadcast" | "share" | "roster";
+  initialTab?: "email" | "broadcast" | "share" | "roster";
   onClose: () => void;
 }
 
-type ModalTab = "broadcast" | "share" | "roster";
+type ModalTab = "email" | "broadcast" | "share" | "roster";
 type FormatMode = "whatsapp" | "email" | "table";
-type BroadcastAudience = "FILTERED" | "ALL_REQUIRED" | "ZERO_UPLOADS" | "ALL_STUDENTS";
+type AudienceType = "FILTERED" | "ALL_REQUIRED" | "ZERO_UPLOADS" | "ALL_STUDENTS";
 
-const DEFAULT_TITLE = "⚠️ Action Required: Upload Missing Placement Documents";
-const DEFAULT_BODY =
+const DEFAULT_BROADCAST_TITLE = "⚠️ Action Required: Upload Missing Placement Documents";
+const DEFAULT_BROADCAST_BODY =
   "Dear {name}, our placement records indicate that you have not uploaded: {missing_documents}. Please log in to the student portal and upload your verification files immediately to maintain your placement eligibility.";
+
+const DEFAULT_EMAIL_SUBJECT = "[Action Required] Upload Missing Placement Verification Documents — SRM";
+const DEFAULT_EMAIL_BODY =
+  "Our placement verification records indicate that you have pending or missing verification documents. Please log in and upload these verification files immediately to maintain your eligibility for campus recruitment drives and company shortlists.";
 
 export function MissingDocsModal({
   students,
   isOpen,
   initialTopic = "ALL_REQUIRED",
-  initialTab = "broadcast",
+  initialTab = "email",
   onClose,
 }: MissingDocsModalProps) {
   const [activeTab, setActiveTab] = useState<ModalTab>(initialTab);
@@ -53,10 +58,26 @@ export function MissingDocsModal({
   const [copiedNotice, setCopiedNotice] = useState(false);
   const [copiedBcc, setCopiedBcc] = useState(false);
 
-  // Broadcast state
-  const [broadcastAudience, setBroadcastAudience] = useState<BroadcastAudience>("FILTERED");
-  const [customTitle, setCustomTitle] = useState(DEFAULT_TITLE);
-  const [customMessage, setCustomMessage] = useState(DEFAULT_BODY);
+  // Email Server config & state
+  const [emailConfig, setEmailConfig] = useState<{
+    configured: boolean;
+    info?: { configured: boolean; provider: string; from: string };
+  } | null>(null);
+  const [emailAudience, setEmailAudience] = useState<AudienceType>("FILTERED");
+  const [emailSubject, setEmailSubject] = useState(DEFAULT_EMAIL_SUBJECT);
+  const [emailBody, setEmailBody] = useState(DEFAULT_EMAIL_BODY);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailResult, setEmailResult] = useState<{
+    success: boolean;
+    message: string;
+    count?: number;
+    mode?: string;
+  } | null>(null);
+
+  // In-app Broadcast state
+  const [broadcastAudience, setBroadcastAudience] = useState<AudienceType>("FILTERED");
+  const [customTitle, setCustomTitle] = useState(DEFAULT_BROADCAST_TITLE);
+  const [customMessage, setCustomMessage] = useState(DEFAULT_BROADCAST_BODY);
   const [broadcastKind, setBroadcastKind] = useState<"WARNING" | "INFO">("WARNING");
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
   const [broadcastResult, setBroadcastResult] = useState<{
@@ -69,6 +90,18 @@ export function MissingDocsModal({
   const [rosterSearch, setRosterSearch] = useState("");
   const [singleSendingId, setSingleSendingId] = useState<string | null>(null);
   const [singleSentMap, setSingleSentMap] = useState<Record<string, boolean>>({});
+  const [singleEmailSendingId, setSingleEmailSendingId] = useState<string | null>(null);
+  const [singleEmailSentMap, setSingleEmailSentMap] = useState<Record<string, boolean>>({});
+
+  // Check email transport status on mount
+  useEffect(() => {
+    fetch("/api/students/send-email")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setEmailConfig(data);
+      })
+      .catch(() => {});
+  }, []);
 
   // Analyze all students for missing documents across categories
   const topicData = useMemo(() => {
@@ -115,6 +148,14 @@ export function MissingDocsModal({
     return found ? found.label : selectedTopic;
   }, [selectedTopic, topicData]);
 
+  // Audience list for Email tab
+  const emailList = useMemo(() => {
+    if (emailAudience === "FILTERED") return activeDefaulters;
+    if (emailAudience === "ALL_REQUIRED") return requiredDefaulters;
+    if (emailAudience === "ZERO_UPLOADS") return zeroUploads;
+    return students;
+  }, [emailAudience, activeDefaulters, requiredDefaulters, zeroUploads, students]);
+
   // Audience list for Broadcast tab
   const broadcastList = useMemo(() => {
     if (broadcastAudience === "FILTERED") return activeDefaulters;
@@ -123,35 +164,62 @@ export function MissingDocsModal({
     return students;
   }, [broadcastAudience, activeDefaulters, requiredDefaulters, zeroUploads, students]);
 
+  // Sample student for live preview in Email tab
+  const sampleEmailStudent = useMemo(() => {
+    return emailList[0] || null;
+  }, [emailList]);
+
+  const sampleEmailPreview = useMemo(() => {
+    if (!sampleEmailStudent) return null;
+    const audit = auditStudentDocuments(sampleEmailStudent.documents);
+    const missingText =
+      audit.missingDocLabels.length > 0 ? audit.missingDocLabels.join(", ") : "Mandatory Verification Documents";
+
+    const subject = emailSubject
+      .replaceAll("{name}", sampleEmailStudent.fullName)
+      .replaceAll("{missing_documents}", missingText)
+      .replaceAll("{register_number}", sampleEmailStudent.registerNumber);
+
+    const body = emailBody
+      .replaceAll("{name}", sampleEmailStudent.fullName)
+      .replaceAll("{missing_documents}", missingText)
+      .replaceAll("{register_number}", sampleEmailStudent.registerNumber);
+
+    return {
+      student: sampleEmailStudent,
+      missingText,
+      subject,
+      body,
+    };
+  }, [sampleEmailStudent, emailSubject, emailBody]);
+
   // Sample student for live preview in Broadcast tab
-  const sampleStudent = useMemo(() => {
+  const sampleBroadcastStudent = useMemo(() => {
     return broadcastList[0] || null;
   }, [broadcastList]);
 
-  const samplePreviewText = useMemo(() => {
-    if (!sampleStudent) {
-      return "No matching candidates found for this target.";
-    }
-    const audit = auditStudentDocuments(sampleStudent.documents);
+  const sampleBroadcastPreviewText = useMemo(() => {
+    if (!sampleBroadcastStudent) return "No matching candidates found for this target.";
+    const audit = auditStudentDocuments(sampleBroadcastStudent.documents);
     const missingText =
       audit.missingDocLabels.length > 0 ? audit.missingDocLabels.join(", ") : "Required Placement Documents";
 
     return customMessage
-      .replaceAll("{name}", sampleStudent.fullName)
+      .replaceAll("{name}", sampleBroadcastStudent.fullName)
       .replaceAll("{missing_documents}", missingText)
-      .replaceAll("{register_number}", sampleStudent.registerNumber);
-  }, [sampleStudent, customMessage]);
+      .replaceAll("{register_number}", sampleBroadcastStudent.registerNumber);
+  }, [sampleBroadcastStudent, customMessage]);
 
-  const samplePreviewTitle = useMemo(() => {
-    if (!sampleStudent) return customTitle;
-    const audit = auditStudentDocuments(sampleStudent.documents);
+  const sampleBroadcastPreviewTitle = useMemo(() => {
+    if (!sampleBroadcastStudent) return customTitle;
+    const audit = auditStudentDocuments(sampleBroadcastStudent.documents);
     const missingText =
       audit.missingDocLabels.length > 0 ? audit.missingDocLabels.join(", ") : "Required Placement Documents";
 
     return customTitle
-      .replaceAll("{name}", sampleStudent.fullName)
+      .replaceAll("{name}", sampleBroadcastStudent.fullName)
       .replaceAll("{missing_documents}", missingText);
-  }, [sampleStudent, customTitle]);
+  }, [sampleBroadcastStudent, customTitle]);
 
   // Comma-separated BCC emails for quick copy
   const bccEmails = useMemo(() => {
@@ -343,6 +411,65 @@ export function MissingDocsModal({
     URL.revokeObjectURL(url);
   };
 
+  // Dispatch Direct Emails to student mailboxes
+  const handleSendEmails = async () => {
+    if (sendingEmail) return;
+    setSendingEmail(true);
+    setEmailResult(null);
+
+    let targetPayload: {
+      target: "MISSING_MANDATORY" | "MISSING_TOPIC" | "ALL_STUDENTS" | "ZERO_UPLOADS";
+      topicCategory?: string;
+    } = { target: "MISSING_MANDATORY" };
+
+    if (emailAudience === "FILTERED") {
+      if (selectedTopic === "ALL_REQUIRED") {
+        targetPayload = { target: "MISSING_MANDATORY" };
+      } else if (selectedTopic === "ZERO_UPLOADS") {
+        targetPayload = { target: "ZERO_UPLOADS" };
+      } else {
+        targetPayload = { target: "MISSING_TOPIC", topicCategory: selectedTopic };
+      }
+    } else if (emailAudience === "ALL_REQUIRED") {
+      targetPayload = { target: "MISSING_MANDATORY" };
+    } else if (emailAudience === "ZERO_UPLOADS") {
+      targetPayload = { target: "ZERO_UPLOADS" };
+    } else if (emailAudience === "ALL_STUDENTS") {
+      targetPayload = { target: "ALL_STUDENTS" };
+    }
+
+    try {
+      const res = await fetch("/api/students/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...targetPayload,
+          customSubject: emailSubject.trim(),
+          customMessage: emailBody.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to dispatch reminder emails.");
+      }
+
+      setEmailResult({
+        success: true,
+        message: data.message || `Dispatched reminder emails to ${data.count} students.`,
+        count: data.count,
+        mode: data.mode,
+      });
+    } catch (err: unknown) {
+      setEmailResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Network error sending reminder emails.",
+      });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   // Dispatch broadcast notification to student portals
   const handleSendBroadcast = async () => {
     if (sendingBroadcast) return;
@@ -403,7 +530,36 @@ export function MissingDocsModal({
     }
   };
 
-  // Send single direct reminder to a student from Roster tab
+  // Send single direct email to a student from Roster tab
+  const handleSendSingleEmail = async (student: StudentDto) => {
+    setSingleEmailSendingId(student.id);
+    try {
+      const audit = auditStudentDocuments(student.documents);
+      const missingText =
+        audit.missingDocLabels.length > 0 ? audit.missingDocLabels.join(", ") : "Required Marksheets";
+
+      const res = await fetch("/api/students/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: "CUSTOM_IDS",
+          studentIds: [student.id],
+          customSubject: `[Action Required] Missing Placement Verification Documents (${student.registerNumber})`,
+          customMessage: `Dear ${student.fullName}, our placement records indicate that you have not uploaded: ${missingText}. Please upload your verification documents on the portal immediately.`,
+        }),
+      });
+
+      if (res.ok) {
+        setSingleEmailSentMap((prev) => ({ ...prev, [student.id]: true }));
+      }
+    } catch {
+      // Ignored
+    } finally {
+      setSingleEmailSendingId(null);
+    }
+  };
+
+  // Send single direct in-app reminder to a student from Roster tab
   const handleSendSingleReminder = async (student: StudentDto) => {
     setSingleSendingId(student.id);
     try {
@@ -453,19 +609,19 @@ export function MissingDocsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-sm animate-in fade-in">
-      <div className="relative flex max-h-[94vh] w-full max-w-4xl flex-col rounded-xl border border-[#e2ded5] bg-white shadow-2xl dark:border-[#262f3c] dark:bg-[#1b222c]">
+      <div className="relative flex max-h-[95vh] w-full max-w-4xl flex-col rounded-xl border border-[#e2ded5] bg-white shadow-2xl dark:border-[#262f3c] dark:bg-[#1b222c]">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-[#e2ded5] p-4 sm:p-5 dark:border-[#262f3c]">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#b45309]/10 text-[#b45309] dark:bg-[#b45309]/20 dark:text-[#fcd34d]">
-              <Bell className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#165b33]/10 text-[#165b33] dark:bg-[#165b33]/25 dark:text-[#78d69f]">
+              <Mail className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[#1c2024] dark:text-white">
-                Defaulters Center &amp; Student Notifications
+              <h2 className="text-base font-bold text-[#1c2024] dark:text-white flex items-center gap-2">
+                <span>Send Emails &amp; Defaulter Notifications</span>
               </h2>
               <p className="text-xs text-[#5c6470] dark:text-[#94a3b8]">
-                Broadcast in-app notices to registered students, copy email rosters, or export defaulter reports.
+                Send personalized reminder emails, broadcast portal alerts, or copy BCC email rosters.
               </p>
             </div>
           </div>
@@ -478,40 +634,53 @@ export function MissingDocsModal({
         </div>
 
         {/* Modal Primary Navigation Tabs */}
-        <div className="flex border-b border-[#e2ded5] bg-[#faf8f5] px-4 pt-2 dark:border-[#262f3c] dark:bg-[#161c24]">
+        <div className="flex border-b border-[#e2ded5] bg-[#faf8f5] px-4 pt-2 dark:border-[#262f3c] dark:bg-[#161c24] overflow-x-auto">
           <button
             type="button"
-            onClick={() => setActiveTab("broadcast")}
-            className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors ${
-              activeTab === "broadcast"
+            onClick={() => setActiveTab("email")}
+            className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors shrink-0 ${
+              activeTab === "email"
                 ? "border-[#165b33] text-[#165b33] dark:border-[#78d69f] dark:text-[#78d69f]"
                 : "border-transparent text-[#5c6470] hover:text-[#1c2024] dark:text-[#94a3b8] dark:hover:text-white"
             }`}
           >
-            <Send className="h-3.5 w-3.5" />
-            <span>Broadcast In-App Notice</span>
+            <Mail className="h-3.5 w-3.5" />
+            <span>Send Direct Emails</span>
             <Badge variant="outline" className="ml-1 text-[10px] py-0 px-1 border-[#165b33]/30">
-              Instant
+              Personalized
             </Badge>
           </button>
 
           <button
             type="button"
+            onClick={() => setActiveTab("broadcast")}
+            className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors shrink-0 ${
+              activeTab === "broadcast"
+                ? "border-[#165b33] text-[#165b33] dark:border-[#78d69f] dark:text-[#78d69f]"
+                : "border-transparent text-[#5c6470] hover:text-[#1c2024] dark:text-[#94a3b8] dark:hover:text-white"
+            }`}
+          >
+            <Bell className="h-3.5 w-3.5" />
+            <span>In-App Portal Alert</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab("share")}
-            className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors ${
+            className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors shrink-0 ${
               activeTab === "share"
                 ? "border-[#165b33] text-[#165b33] dark:border-[#78d69f] dark:text-[#78d69f]"
                 : "border-transparent text-[#5c6470] hover:text-[#1c2024] dark:text-[#94a3b8] dark:hover:text-white"
             }`}
           >
             <MessageSquare className="h-3.5 w-3.5" />
-            <span>Share Notice (WhatsApp / Email)</span>
+            <span>Copy BCC &amp; WhatsApp List</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("roster")}
-            className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors ${
+            className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors shrink-0 ${
               activeTab === "roster"
                 ? "border-[#165b33] text-[#165b33] dark:border-[#78d69f] dark:text-[#78d69f]"
                 : "border-transparent text-[#5c6470] hover:text-[#1c2024] dark:text-[#94a3b8] dark:hover:text-white"
@@ -578,7 +747,228 @@ export function MissingDocsModal({
             </div>
           </div>
 
-          {/* TAB 1: BROADCAST IN-APP NOTICE */}
+          {/* TAB 1: SEND DIRECT EMAILS */}
+          {activeTab === "email" && (
+            <div className="space-y-4 animate-in fade-in">
+              {/* Server Status & Target Audience Strip */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#1c2024] dark:text-white">
+                    Target Email Recipients:
+                  </label>
+                  <select
+                    value={emailAudience}
+                    onChange={(e) => setEmailAudience(e.target.value as AudienceType)}
+                    className="flex h-9 w-full rounded-md border border-[#d8d3c7] bg-white px-2.5 py-1 text-xs text-[#1c2024] shadow-none outline-none focus:border-[#165b33] dark:border-[#333e4e] dark:bg-[#161c24] dark:text-[#f0ede6]"
+                  >
+                    <option value="FILTERED">
+                      Current Filter: {selectedTopicLabel} ({activeDefaulters.length} students)
+                    </option>
+                    <option value="ALL_REQUIRED">
+                      All Mandatory Defaulters (10th/12th/CGPA) ({requiredDefaulters.length} students)
+                    </option>
+                    <option value="ZERO_UPLOADS">
+                      Candidates with Zero Uploads ({zeroUploads.length} students)
+                    </option>
+                    <option value="ALL_STUDENTS">
+                      All Registered Candidates ({students.length} students)
+                    </option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#1c2024] dark:text-white">
+                    Email Server Status:
+                  </label>
+                  <div className="flex h-9 items-center justify-between rounded-md border border-[#d8d3c7] bg-[#faf8f5] px-3 text-xs dark:border-[#333e4e] dark:bg-[#161c24]">
+                    {emailConfig?.configured ? (
+                      <span className="flex items-center gap-1.5 font-semibold text-[#165b33] dark:text-[#78d69f]">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Connected: {emailConfig.info?.provider}</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-[#b45309] dark:text-[#fcd34d]">
+                        <Info className="h-4 w-4 shrink-0" />
+                        <span>Simulation Mode / Ready (SMTP env optional)</span>
+                      </span>
+                    )}
+                    <span className="text-[10px] text-[#5c6470] dark:text-[#94a3b8]">
+                      {emailList.length} recipients
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Email Subject Field */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#1c2024] dark:text-white">
+                  Email Subject Line:
+                </label>
+                <Input
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="e.g. [Action Required] Upload Missing Placement Verification Documents — SRM"
+                  className="font-medium"
+                />
+              </div>
+
+              {/* Email Body Field */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-[#1c2024] dark:text-white">
+                    Email Message Content:
+                  </label>
+                  <div className="flex items-center gap-1 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+                    <span>Insert dynamic tag:</span>
+                    <button
+                      type="button"
+                      onClick={() => setEmailBody((prev) => prev + " {name}")}
+                      className="rounded bg-[#e2ded5]/60 px-1.5 py-0.5 font-mono text-[10px] text-[#165b33] hover:bg-[#d8d3c7] dark:bg-[#262f3c] dark:text-[#78d69f]"
+                    >
+                      {"{name}"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmailBody((prev) => prev + " {missing_documents}")}
+                      className="rounded bg-[#e2ded5]/60 px-1.5 py-0.5 font-mono text-[10px] text-[#165b33] hover:bg-[#d8d3c7] dark:bg-[#262f3c] dark:text-[#78d69f]"
+                    >
+                      {"{missing_documents}"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmailBody((prev) => prev + " {register_number}")}
+                      className="rounded bg-[#e2ded5]/60 px-1.5 py-0.5 font-mono text-[10px] text-[#165b33] hover:bg-[#d8d3c7] dark:bg-[#262f3c] dark:text-[#78d69f]"
+                    >
+                      {"{register_number}"}
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-md border border-[#d8d3c7] bg-white p-2.5 text-xs text-[#1c2024] shadow-none outline-none focus:border-[#165b33] dark:border-[#333e4e] dark:bg-[#161c24] dark:text-[#f0ede6]"
+                  placeholder="Enter email message content..."
+                />
+              </div>
+
+              {/* Institutional HTML Email Preview */}
+              {sampleEmailPreview && (
+                <div className="rounded-lg border border-[#d8d3c7] bg-[#f9f8f6] p-3.5 dark:border-[#2b3543] dark:bg-[#151b22]">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-[#1c2024] dark:text-white">
+                      <Sparkles className="h-3.5 w-3.5 text-[#165b33]" />
+                      <span>Live Personalized Email Preview for Recipient:</span>
+                    </div>
+                    <span className="text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
+                      Sending to: <strong>{sampleEmailPreview.student.fullName}</strong> ({sampleEmailPreview.student.email})
+                    </span>
+                  </div>
+
+                  {/* Mock Email Frame */}
+                  <div className="rounded-lg border border-[#e2ded5] bg-white p-4 shadow-sm text-xs space-y-3 dark:border-[#262f3c] dark:bg-[#1b222c]">
+                    <div className="rounded bg-[#165b33] px-3 py-2 text-white font-semibold flex items-center justify-between">
+                      <span>SRM School of Computing — Placement Cell</span>
+                      <span className="text-[10px] text-[#a3e6b9]">PLACEMENT VERIFICATION REMINDER</span>
+                    </div>
+
+                    <div className="text-[#1c2024] dark:text-[#f0ede6] space-y-2">
+                      <div className="font-semibold">
+                        Subject: <span className="font-normal">{sampleEmailPreview.subject}</span>
+                      </div>
+                      <div>
+                        Dear <strong>{sampleEmailPreview.student.fullName}</strong> (Reg No: {sampleEmailPreview.student.registerNumber}),
+                      </div>
+                      <p className="text-[#4b5563] dark:text-[#94a3b8] leading-relaxed">
+                        {sampleEmailPreview.body}
+                      </p>
+
+                      <div className="rounded-md border border-[#fca5a5] bg-[#fef2f2] p-2.5 text-[#991b1b] dark:border-[#7f1d1d] dark:bg-[#450a0a]/50 dark:text-[#fca5a5]">
+                        <div className="font-bold text-[11px] uppercase tracking-wide">
+                          Pending / Missing Submission(s):
+                        </div>
+                        <div className="font-semibold text-xs mt-0.5">
+                          {sampleEmailPreview.missingText}
+                        </div>
+                      </div>
+
+                      <div className="pt-2">
+                        <span className="inline-block rounded bg-[#165b33] px-4 py-2 text-white font-bold text-xs shadow-sm">
+                          Log In &amp; Upload Documents &rarr;
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Dispatch Action & Feedback */}
+              {emailResult && (
+                <div
+                  className={`flex items-center gap-2 rounded-lg border p-3 text-xs ${
+                    emailResult.success
+                      ? "border-[#86efac] bg-[#f0fdf4] text-[#166534] dark:border-[#166534] dark:bg-[#052e16] dark:text-[#86efac]"
+                      : "border-[#fca5a5] bg-[#fef2f2] text-[#991b1b] dark:border-[#991b1b] dark:bg-[#450a0a] dark:text-[#fca5a5]"
+                  }`}
+                >
+                  {emailResult.success ? (
+                    <Check className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                  )}
+                  <span>{emailResult.message}</span>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                <div className="text-xs text-[#5c6470] dark:text-[#94a3b8]">
+                  Will send personalized emails to <strong>{emailList.length}</strong> candidates (and post in-app alerts).
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCopyBcc}
+                    disabled={!activeDefaulters.length}
+                    className="h-8 text-xs border-[#38bdf8] text-[#0284c7] hover:bg-[#f0f9ff] dark:border-[#0284c7] dark:text-[#38bdf8]"
+                    title="Or copy emails to BCC in your college email account"
+                  >
+                    {copiedBcc ? (
+                      <>
+                        <Check className="mr-1.5 h-3.5 w-3.5 text-[#165b33]" />
+                        <span>Copied BCC!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="mr-1.5 h-3.5 w-3.5" />
+                        <span>Copy BCC ({activeDefaulters.length})</span>
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    onClick={handleSendEmails}
+                    disabled={sendingEmail || emailList.length === 0}
+                    className="bg-[#165b33] text-xs font-semibold text-white hover:bg-[#124929] shadow-sm h-8"
+                  >
+                    {sendingEmail ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        <span>Sending Emails…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="mr-1.5 h-3.5 w-3.5" />
+                        <span>Send Reminder Emails ({emailList.length} Students)</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: IN-APP PORTAL ALERTS */}
           {activeTab === "broadcast" && (
             <div className="space-y-4 animate-in fade-in">
               {/* Audience & Alert Type Selector */}
@@ -589,7 +979,7 @@ export function MissingDocsModal({
                   </label>
                   <select
                     value={broadcastAudience}
-                    onChange={(e) => setBroadcastAudience(e.target.value as BroadcastAudience)}
+                    onChange={(e) => setBroadcastAudience(e.target.value as AudienceType)}
                     className="flex h-9 w-full rounded-md border border-[#d8d3c7] bg-white px-2.5 py-1 text-xs text-[#1c2024] shadow-none outline-none focus:border-[#165b33] dark:border-[#333e4e] dark:bg-[#161c24] dark:text-[#f0ede6]"
                   >
                     <option value="FILTERED">
@@ -700,9 +1090,9 @@ export function MissingDocsModal({
                     <Sparkles className="h-3.5 w-3.5 text-[#b45309]" />
                     <span>Live Sample Preview for Recipient:</span>
                   </div>
-                  {sampleStudent && (
+                  {sampleBroadcastStudent && (
                     <span className="text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
-                      Sample: <strong>{sampleStudent.fullName}</strong> ({sampleStudent.registerNumber})
+                      Sample: <strong>{sampleBroadcastStudent.fullName}</strong> ({sampleBroadcastStudent.registerNumber})
                     </span>
                   )}
                 </div>
@@ -716,8 +1106,8 @@ export function MissingDocsModal({
                   <div className="flex items-start gap-2">
                     <Bell className="h-4 w-4 shrink-0 mt-0.5" />
                     <div className="space-y-1">
-                      <div className="text-xs font-bold">{samplePreviewTitle}</div>
-                      <div className="text-xs leading-relaxed">{samplePreviewText}</div>
+                      <div className="text-xs font-bold">{sampleBroadcastPreviewTitle}</div>
+                      <div className="text-xs leading-relaxed">{sampleBroadcastPreviewText}</div>
                     </div>
                   </div>
                 </div>
@@ -766,7 +1156,7 @@ export function MissingDocsModal({
             </div>
           )}
 
-          {/* TAB 2: SHAREABLE FORMATS (WHATSAPP / EMAIL / SHEETS) */}
+          {/* TAB 3: SHAREABLE FORMATS (WHATSAPP / EMAIL DRAFT / SHEETS) */}
           {activeTab === "share" && (
             <div className="space-y-4 animate-in fade-in">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-[#e2ded5] pb-3 dark:border-[#262f3c]">
@@ -897,7 +1287,7 @@ export function MissingDocsModal({
             </div>
           )}
 
-          {/* TAB 3: DEFAULTERS ROSTER */}
+          {/* TAB 4: DEFAULTERS ROSTER */}
           {activeTab === "roster" && (
             <div className="space-y-3 animate-in fade-in">
               <div className="flex items-center justify-between gap-3">
@@ -925,7 +1315,7 @@ export function MissingDocsModal({
                       <th>Email</th>
                       <th>Faculty Advisor</th>
                       <th>Missing Documents</th>
-                      <th className="text-right">Direct Alert</th>
+                      <th className="text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -940,6 +1330,8 @@ export function MissingDocsModal({
                         const audit = auditStudentDocuments(s.documents);
                         const isSent = singleSentMap[s.id];
                         const isSending = singleSendingId === s.id;
+                        const isEmailSent = singleEmailSentMap[s.id];
+                        const isEmailSending = singleEmailSendingId === s.id;
 
                         return (
                           <tr key={s.id}>
@@ -968,27 +1360,53 @@ export function MissingDocsModal({
                               </div>
                             </td>
                             <td className="text-right">
-                              <Button
-                                size="sm"
-                                variant={isSent ? "success" : "outline"}
-                                onClick={() => handleSendSingleReminder(s)}
-                                disabled={isSending || isSent}
-                                className="h-6 text-[10px] px-2"
-                              >
-                                {isSending ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : isSent ? (
-                                  <>
-                                    <Check className="mr-1 h-3 w-3" />
-                                    <span>Sent!</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Send className="mr-1 h-3 w-3" />
-                                    <span>Remind</span>
-                                  </>
-                                )}
-                              </Button>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="sm"
+                                  variant={isEmailSent ? "success" : "outline"}
+                                  onClick={() => handleSendSingleEmail(s)}
+                                  disabled={isEmailSending || isEmailSent}
+                                  className="h-6 text-[10px] px-2 text-[#0284c7] border-[#38bdf8] hover:bg-[#f0f9ff]"
+                                  title="Send individual email to this student"
+                                >
+                                  {isEmailSending ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : isEmailSent ? (
+                                    <>
+                                      <Check className="mr-1 h-3 w-3 text-[#165b33]" />
+                                      <span>Mailed!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Mail className="mr-1 h-3 w-3" />
+                                      <span>Email</span>
+                                    </>
+                                  )}
+                                </Button>
+
+                                <Button
+                                  size="sm"
+                                  variant={isSent ? "success" : "outline"}
+                                  onClick={() => handleSendSingleReminder(s)}
+                                  disabled={isSending || isSent}
+                                  className="h-6 text-[10px] px-2"
+                                  title="Send individual in-app portal alert"
+                                >
+                                  {isSending ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : isSent ? (
+                                    <>
+                                      <Check className="mr-1 h-3 w-3" />
+                                      <span>Alerted!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Bell className="mr-1 h-3 w-3" />
+                                      <span>Alert</span>
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         );

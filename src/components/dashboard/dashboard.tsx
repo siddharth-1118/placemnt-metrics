@@ -15,6 +15,7 @@ import {
   FileSpreadsheet,
   Bell,
   Send,
+  Mail,
 } from "lucide-react";
 import { Badge, Button, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
@@ -82,7 +83,7 @@ export function Dashboard({
   const [docFilter, setDocFilter] = useState<DocFilter>("ALL");
   const [topicFilter, setTopicFilter] = useState<string>("ALL");
   const [showShareModal, setShowShareModal] = useState(false);
-  const [modalInitialTab, setModalInitialTab] = useState<"broadcast" | "share" | "roster">("broadcast");
+  const [modalInitialTab, setModalInitialTab] = useState<"email" | "broadcast" | "share" | "roster">("email");
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -505,6 +506,20 @@ export function Dashboard({
           size="sm"
           variant="outline"
           onClick={() => {
+            setModalInitialTab("email");
+            setShowShareModal(true);
+          }}
+          className="text-xs text-[#165b33] border-[#165b33]/40 hover:bg-[#eaf4ed] dark:text-[#78d69f] dark:border-[#165b33] dark:hover:bg-[#165b33]/20"
+          title="Send personalized emails to students with missing documents"
+        >
+          <Mail className="mr-1 h-3.5 w-3.5" />
+          <span>Send Emails</span>
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
             setModalInitialTab("broadcast");
             setShowShareModal(true);
           }}
@@ -512,7 +527,7 @@ export function Dashboard({
           title="Send in-app reminder messages to students with missing documents"
         >
           <Bell className="mr-1 h-3.5 w-3.5" />
-          <span>Send Reminders</span>
+          <span>In-App Alerts</span>
         </Button>
 
         <Button
