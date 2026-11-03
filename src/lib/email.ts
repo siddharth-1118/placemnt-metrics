@@ -30,11 +30,15 @@ export function isEmailConfigured(): boolean {
  * Returns configuration info for display in the coordinator interface (without leaking secrets).
  */
 export function getEmailConfigInfo() {
-  if (process.env.SMTP_HOST) {
+  const host = process.env.SMTP_HOST || "";
+  const user = process.env.SMTP_USER || "";
+
+  if (host) {
+    const isGmail = host.includes("gmail.com") || user.includes("@gmail.com");
     return {
       configured: true,
-      provider: `SMTP (${process.env.SMTP_HOST})`,
-      from: process.env.SMTP_FROM || process.env.SMTP_USER || "placement@srmist.edu.in",
+      provider: isGmail ? `Gmail SMTP (${user})` : `SMTP (${host})`,
+      from: process.env.SMTP_FROM || user || "placement@srmist.edu.in",
     };
   }
   if (process.env.RESEND_API_KEY) {
@@ -67,17 +71,32 @@ function createTransport() {
     });
   }
 
-  if (process.env.SMTP_HOST) {
+  const host = process.env.SMTP_HOST || "";
+  const user = process.env.SMTP_USER || "";
+  const pass = process.env.SMTP_PASS || "";
+
+  if (host && user && pass) {
+    const isGmail = host.includes("gmail.com") || user.includes("@gmail.com");
+    if (isGmail) {
+      return nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user,
+          pass,
+        },
+      });
+    }
+
     const port = Number(process.env.SMTP_PORT) || 587;
     const secure = process.env.SMTP_SECURE === "true" || port === 465;
 
     return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
+      host,
       port,
       secure,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user,
+        pass,
       },
     });
   }
@@ -92,8 +111,9 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
   const transport = createTransport();
   const from =
     process.env.SMTP_FROM ||
-    process.env.SMTP_USER ||
-    '"SRM Placement Cell" <placement@srmist.edu.in>';
+    (process.env.SMTP_USER
+      ? `"SRM Placement Cell" <${process.env.SMTP_USER}>`
+      : '"SRM Placement Cell" <placement@srmist.edu.in>');
 
   if (!transport) {
     // Simulated delivery for local dev / demo when SMTP credentials are not yet added
