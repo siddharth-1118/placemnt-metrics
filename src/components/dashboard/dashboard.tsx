@@ -16,10 +16,12 @@ import {
   Bell,
   Send,
   Mail,
+  Cloud,
 } from "lucide-react";
 import { Badge, Button, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
 import { MissingDocsModal } from "@/components/dashboard/missing-docs-modal";
+import { OneDriveSyncModal } from "@/components/dashboard/onedrive-sync-modal";
 import { scopesAreFull, type ScoreScope } from "@/lib/scopes";
 import { SRM_OFFICIAL_METRICS, type StudentDto } from "@/lib/types";
 import { auditStudentDocuments, docCategoryLabel } from "@/lib/categories";
@@ -91,6 +93,7 @@ export function Dashboard({
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
+  const [oneDriveModalOpen, setOneDriveModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<ActiveSection>("STUDENTS");
 
   const load = useCallback(async () => {
@@ -436,6 +439,15 @@ export function Dashboard({
               <Calculator className="mr-1 h-3 w-3" />
             )}
             <span>Recalculate Scores</span>
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => setOneDriveModalOpen(true)}
+            className="h-8 bg-[#0078d4] text-xs font-medium text-white hover:bg-[#0066b8]"
+          >
+            <Cloud className="mr-1 h-3 w-3" />
+            <span>OneDrive Live Sync</span>
           </Button>
 
           <Button
@@ -865,6 +877,31 @@ export function Dashboard({
           </div>
 
           <div className="mt-4 space-y-3">
+            <div className="rounded border border-[#b3d7f4] bg-[#f0f7fd] p-4 dark:border-[#1d4f79] dark:bg-[#0e273f]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-bold text-[#005a9e] dark:text-[#58a6ff]">
+                      OneDrive &amp; Excel Online Real-Time Sync
+                    </h3>
+                    <Badge className="bg-emerald-100 text-emerald-800 text-[10px] dark:bg-emerald-950/60 dark:text-emerald-300 border-none">
+                      Active Live Feed
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 text-xs text-[#42526e] dark:text-[#a0c7e8]">
+                    Linked to your OneDrive spreadsheet. Automatically fetches real-time candidate scores without downloading new files.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setOneDriveModalOpen(true)}
+                  className="bg-[#0078d4] text-xs font-medium text-white hover:bg-[#0066b8]"
+                >
+                  <Cloud className="mr-1 h-3.5 w-3.5" />
+                  Sync Instructions &amp; Feed
+                </Button>
+              </div>
+            </div>
             <div className="rounded border border-[#e2ded5] p-4 dark:border-[#262f3c]">
               <div className="flex items-center justify-between">
                 <div>
@@ -1271,6 +1308,15 @@ export function Dashboard({
           permissionScopes={permissionScopes}
           onClose={() => setSelectedId(null)}
           onChanged={load}
+        />
+      )}
+
+      {/* OneDrive & Excel Live Sync Modal */}
+      {oneDriveModalOpen && (
+        <OneDriveSyncModal
+          isOpen={oneDriveModalOpen}
+          totalStudents={students.length}
+          onClose={() => setOneDriveModalOpen(false)}
         />
       )}
 
