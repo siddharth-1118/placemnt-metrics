@@ -162,7 +162,7 @@ export function buildPlacementReminderHtml(params: {
   customMessage: string;
   portalUrl?: string;
 }) {
-  const portalUrl = params.portalUrl || "https://placemnt-metrics.vercel.app/my-submission";
+  const portalUrl = params.portalUrl || "https://placement-metrics.vercel.app/my-submission";
 
   return `
 <!DOCTYPE html>

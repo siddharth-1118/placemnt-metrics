@@ -49,7 +49,7 @@ export function OneDriveSyncModal({
     }
   }, []);
 
-  const baseOrigin = origin || "https://placemnt-metrics.vercel.app";
+  const baseOrigin = origin || "https://placement-metrics.vercel.app";
   const csvFeedUrl = `${baseOrigin}/api/students/export/live?token=${DEFAULT_FEED_TOKEN}`;
   const xlsxFeedUrl = `${baseOrigin}/api/students/export/live?format=xlsx&token=${DEFAULT_FEED_TOKEN}`;
   const jsonFeedUrl = `${baseOrigin}/api/students/export/live?format=json&token=${DEFAULT_FEED_TOKEN}`;
@@ -79,13 +79,19 @@ async function main(workbook: ExcelScript.Workbook) {
     return;
   }
   
-  // 2. Prepare dataset: Row 1 = Headers, Rows 2..N = Candidate Data
-  const allData: (string | number)[][] = [headers, ...rows];
+  // 2. Clean nulls & prepare dataset: Row 1 = Headers, Rows 2..N = Candidate Data
+  const cleanRows = rows.map((r: (string | number)[]) =>
+    r.map((val) => (val === null || val === undefined ? "" : val))
+  );
+  const allData: (string | number)[][] = [headers, ...cleanRows];
   const numRows = allData.length;
   const numCols = headers.length;
   
   // 3. Clear existing contents to prevent stale rows
-  sheet.getRange().clear(ExcelScript.ClearApplyTo.contents);
+  const usedRange = sheet.getUsedRange();
+  if (usedRange) {
+    usedRange.clear(ExcelScript.ClearApplyTo.contents);
+  }
   
   // 4. Populate table values
   const targetRange = sheet.getRangeByIndexes(0, 0, numRows, numCols);

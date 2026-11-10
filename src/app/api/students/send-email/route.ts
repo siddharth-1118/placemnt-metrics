@@ -155,7 +155,7 @@ export async function POST(req: Request) {
           customMessage: personalizedMessage,
         });
 
-        const text = `Dear ${student.fullName} (${student.registerNumber}),\n\n${personalizedMessage}\n\nPending Documents: ${missingText}\n\nPlease upload them on the placement portal:\nhttps://placemnt-metrics.vercel.app/my-submission\n\nRegards,\nSRM School of Computing Placement Cell`;
+        const text = `Dear ${student.fullName} (${student.registerNumber}),\n\n${personalizedMessage}\n\nPending Documents: ${missingText}\n\nPlease upload them on the placement portal:\nhttps://placement-metrics.vercel.app/my-submission\n\nRegards,\nSRM School of Computing Placement Cell`;
 
         const res = await sendEmail({
           to: student.email,

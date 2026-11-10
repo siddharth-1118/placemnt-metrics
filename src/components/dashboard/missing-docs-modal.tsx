@@ -238,7 +238,7 @@ export function MissingDocsModal({
       .filter((e) => Boolean(e) && e.includes("@"))
       .join(",");
     const body = encodeURIComponent(
-      `Dear Candidate,\n\nOur records indicate that you have pending or missing placement verification documents on the SRM portal.\n\nPlease log in and complete your document submissions immediately:\nhttps://placemnt-metrics.vercel.app/my-submission\n\nRegards,\nSRM School of Computing Placement Cell`
+      `Dear Candidate,\n\nOur records indicate that you have pending or missing placement verification documents on the SRM portal.\n\nPlease log in and complete your document submissions immediately:\nhttps://placement-metrics.vercel.app/my-submission\n\nRegards,\nSRM School of Computing Placement Cell`
     );
     return `mailto:placement@srmist.edu.in?bcc=${bccList}&subject=${subject}&body=${body}`;
   }, [activeDefaulters]);
@@ -287,7 +287,7 @@ export function MissingDocsModal({
       }
 
       text += `🔗 *Action Required:* Please log in to the placement portal and upload the missing verification files immediately:\n`;
-      text += `https://placemnt-metrics.vercel.app/my-submission\n`;
+      text += `https://placement-metrics.vercel.app/my-submission\n`;
       return text;
     }
 
@@ -316,7 +316,7 @@ export function MissingDocsModal({
       }
 
       text += `Kindly submit all required proofs without delay to complete your profile verification:\n`;
-      text += `Portal: https://placemnt-metrics.vercel.app/login\n\n`;
+      text += `Portal: https://placement-metrics.vercel.app/login\n\n`;
       text += `Regards,\nSRM School of Computing Placement Cell`;
       return text;
     }
