@@ -137,35 +137,103 @@ export function Dashboard({
     }
   }
 
-  // Export currently filtered students directly as CSV
+  // Export currently filtered students in official 19-column SRM format
   function exportFilteredToCsv() {
     if (!filtered.length) return;
     const headers = [
-      "Rank",
-      "Register Number",
-      "Full Name",
-      "Email",
+      "Registration Number",
+      "Full Name (AS PER ATTENDANCE)",
+      "Section",
+      "Specialization",
       "Faculty Advisor",
-      "Document Status",
-      "Missing Documents",
-      "Total Uploads",
-      "Total Score (100)",
-      "Evaluation Status",
+      "10th Percentage (2.5)",
+      "12th Percentage (2.5)",
+      "CGPA (5)",
+      "Github Profile (15)",
+      "Coding Practice Platform (10)",
+      "Internship Experience (10)",
+      "Skillset & Global Certifications Completed (15)",
+      "Projects Done (5)",
+      "Full Stack Developer Experience (5)",
+      "Coding Competition & Hackathons Won (10)",
+      "Inhouse Projects Done (5)",
+      "Membership of Professional Bodies (2)",
+      "SHL Assessment / Talent Discovery Assessment / N.C.A.T (National Competence & Employability Test) (13)",
+      "Total",
     ];
 
     const rows = filtered.map((s) => {
-      const audit = auditStudentDocuments(s.documents);
+      const tenthScore = s.tenthPercent
+        ? s.tenthPercent >= 96
+          ? 2.5
+          : s.tenthPercent >= 91
+            ? 2.0
+            : s.tenthPercent >= 86
+              ? 1.5
+              : s.tenthPercent >= 75
+                ? 1.0
+                : 0.5
+        : 0;
+
+      const twelfthScore = s.twelfthPercent
+        ? s.twelfthPercent >= 96
+          ? 2.5
+          : s.twelfthPercent >= 91
+            ? 2.0
+            : s.twelfthPercent >= 86
+              ? 1.5
+              : s.twelfthPercent >= 75
+                ? 1.0
+                : 0.5
+        : 0;
+
+      const cgpaScore = s.cgpa
+        ? s.cgpa > 9.5
+          ? 5.0
+          : s.cgpa >= 9.1
+            ? 4.0
+            : s.cgpa >= 8.6
+              ? 3.0
+              : s.cgpa >= 7.5
+                ? 2.0
+                : 1.0
+        : 0;
+
+      const ghScore = Number(s.scores.github ?? 0);
+      const codingScore = Number(s.scores.coding ?? 0);
+      const internScore = Number(s.scores.internship ?? 0);
+      const certScore = Number(s.scores.certifications ?? 0);
+      const projScore = Number(s.scores.projects ?? 0);
+      const fsdScore = Number(s.scores.fullstack ?? 0);
+      const hackScore = Number(s.scores.hackathons ?? 0);
+      const inhouseScore = Math.min(5, Number(s.scores.inhouse ?? 0));
+      const memberScore = Number(s.scores.membership ?? 0);
+      const shlScore = Number(s.scores.shl ?? 0);
+
+      const totalVal = s.scores.total > 0
+        ? s.scores.total
+        : (tenthScore + twelfthScore + cgpaScore + ghScore + codingScore + internScore + certScore + projScore + fsdScore + hackScore + inhouseScore + memberScore + shlScore);
+
       return [
-        s.rank ?? "—",
         `"${s.registerNumber}"`,
         `"${s.fullName}"`,
-        `"${s.email}"`,
-        `"${s.facultyAdvisor || "—"}"`,
-        `"${audit.summaryText}"`,
-        `"${audit.missingDocLabels.join("; ") || "None"}"`,
-        s.documents.length,
-        s.scores.total,
-        s.status,
+        `"AO1"`,
+        `"B.Tech - AIML"`,
+        `"${s.facultyAdvisor || "Dr. Kaliraj G"}"`,
+        tenthScore > 0 ? tenthScore : 0,
+        twelfthScore > 0 ? twelfthScore : 0,
+        cgpaScore > 0 ? cgpaScore : 0,
+        ghScore > 0 ? ghScore : 0,
+        codingScore > 0 ? codingScore : 0,
+        internScore > 0 ? internScore : 0,
+        certScore > 0 ? certScore : 0,
+        projScore > 0 ? projScore : 0,
+        fsdScore > 0 ? fsdScore : 0,
+        hackScore > 0 ? hackScore : 0,
+        inhouseScore > 0 ? inhouseScore : 0,
+        memberScore > 0 ? memberScore : 0,
+        shlScore > 0 ? shlScore : 0,
+        totalVal,
       ];
     });
 
@@ -175,7 +243,7 @@ export function Dashboard({
     const link = document.createElement("a");
     link.href = url;
     const filterName = topicFilter !== "ALL" ? `_${topicFilter}` : docFilter !== "ALL" ? `_${docFilter}` : "";
-    link.download = `SRM_Placement_Candidates${filterName}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `SRM_Placement_Matrix_AO1${filterName}_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

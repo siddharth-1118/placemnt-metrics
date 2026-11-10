@@ -8,7 +8,15 @@
  */
 import { deflateRawSync } from "node:zlib";
 
-type CellValue = string | number | Date;
+export type CellStyle = "default" | "header" | "center" | "boldCenter";
+
+export interface CellObject {
+  value?: string | number | Date | null;
+  formula?: string;
+  style?: CellStyle;
+}
+
+export type CellValue = string | number | Date | null | undefined | CellObject;
 export type XlsxRow = CellValue[];
 
 interface ZipEntry {
@@ -133,26 +141,58 @@ function columnName(index: number): string {
   return name;
 }
 
-function cellXml(value: CellValue, row: number, col: number, isHeader = false): string {
+function cellXml(raw: CellValue, row: number, col: number, isHeader = false): string {
   const ref = `${columnName(col)}${row}`;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return `<c r="${ref}"><v>${value}</v></c>`;
+  if (isHeader) {
+    const text = raw !== undefined && raw !== null ? String(raw) : "";
+    return `<c r="${ref}" t="inlineStr" s="1"><is><t xml:space="preserve">${xmlEscape(text)}</t></is></c>`;
   }
+
+  let value: string | number | Date | null | undefined = raw as any;
+  let formula: string | undefined = undefined;
+  let customStyleIdx = "2"; // Default to centered cell with border
+
+  if (raw && typeof raw === "object" && !(raw instanceof Date)) {
+    const obj = raw as CellObject;
+    value = obj.value;
+    formula = obj.formula;
+    if (obj.style === "default") customStyleIdx = "0";
+    else if (obj.style === "header") customStyleIdx = "1";
+    else if (obj.style === "center") customStyleIdx = "2";
+    else if (obj.style === "boldCenter") customStyleIdx = "3";
+  }
+
+  // Formula cell (e.g. Total =SUM(F2:R2))
+  if (formula) {
+    const v = value !== undefined && value !== null ? `<v>${value}</v>` : "<v>0</v>";
+    return `<c r="${ref}" s="${customStyleIdx}"><f>${xmlEscape(formula)}</f>${v}</c>`;
+  }
+
+  // Numeric cell
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `<c r="${ref}" s="${customStyleIdx}"><v>${value}</v></c>`;
+  }
+
+  // Date cell
   if (value instanceof Date) {
     const utc = Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
     const serial = Math.round((utc - Date.UTC(1899, 11, 30)) / 86400000);
-    return `<c r="${ref}" s="2"><v>${serial}</v></c>`;
+    return `<c r="${ref}" s="4"><v>${serial}</v></c>`;
   }
-  const text = value ?? "";
-  if (text === "") return `<c r="${ref}"/>`;
-  const styleAttr = isHeader ? ` s="1"` : "";
-  return `<c r="${ref}" t="inlineStr"${styleAttr}><is><t xml:space="preserve">${xmlEscape(String(text))}</t></is></c>`;
+
+  // Text cell
+  const text = value !== undefined && value !== null ? String(value) : "";
+  if (text === "") {
+    return `<c r="${ref}" s="${customStyleIdx}"/>`;
+  }
+
+  return `<c r="${ref}" t="inlineStr" s="${customStyleIdx}"><is><t xml:space="preserve">${xmlEscape(text)}</t></is></c>`;
 }
 
 /* ------------------------------- Workbook --------------------------------- */
 
 export interface XlsxSheetSpec {
-  /** First row — rendered bold with subtle shading. */
+  /** First row — rendered bold with subtle shading and thin borders. */
   headers: string[];
   rows: XlsxRow[];
   /** Optional per-column widths (character units). */
@@ -168,7 +208,7 @@ export function buildXlsx(spec: XlsxSheetSpec): Buffer {
   const bodyRowsXml = spec.rows
     .map(
       (row, rIdx) =>
-        `<row r="${rIdx + 2}">${row.map((v, cIdx) => cellXml(v, rIdx + 2, cIdx, false)).join("")}</row>`,
+        `<row r="${rIdx + 2}" ht="20" customHeight="1">${row.map((v, cIdx) => cellXml(v, rIdx + 2, cIdx, false)).join("")}</row>`,
     )
     .join("");
 
@@ -188,7 +228,7 @@ export function buildXlsx(spec: XlsxSheetSpec): Buffer {
   // 5. cols
   // 6. sheetData
   const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/></sheetPr><dimension ref="A1:${columnName(Math.max(0, spec.headers.length - 1))}${Math.max(1, spec.rows.length + 1)}"/><sheetViews><sheetView tabSelected="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>${colsXml}<sheetData>${`<row r="1">${headerCells}</row>`}${bodyRowsXml}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/></sheetPr><dimension ref="A1:${columnName(Math.max(0, spec.headers.length - 1))}${Math.max(1, spec.rows.length + 1)}"/><sheetViews><sheetView tabSelected="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/>${colsXml}<sheetData><row r="1" ht="52" customHeight="1">${headerCells}</row>${bodyRowsXml}</sheetData></worksheet>`;
 
   const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
@@ -198,11 +238,48 @@ export function buildXlsx(spec: XlsxSheetSpec): Buffer {
 
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF1F2937"/><name val="Calibri"/></font><font><sz val="11"/><name val="Calibri"/></font></fonts>
-<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF3F4F6"/><bgColor indexed="64"/></patternFill></fill></fills>
-<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<fonts count="2">
+  <font><sz val="11"/><name val="Calibri"/></font>
+  <font><b/><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/></font>
+</fonts>
+<fills count="3">
+  <fill><patternFill patternType="none"/></fill>
+  <fill><patternFill patternType="gray125"/></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+  <border><left/><right/><top/><bottom/><diagonal/></border>
+  <border>
+    <left style="thin"><color rgb="FF000000"/></left>
+    <right style="thin"><color rgb="FF000000"/></right>
+    <top style="thin"><color rgb="FF000000"/></top>
+    <bottom style="thin"><color rgb="FF000000"/></bottom>
+    <diagonal/>
+  </border>
+</borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf><xf numFmtId="14" fontId="2" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs>
+<cellXfs count="5">
+  <!-- 0: left-aligned body text with border -->
+  <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1" applyBorder="1">
+    <alignment wrapText="1" vertical="center" horizontal="left"/>
+  </xf>
+  <!-- 1: header cell: bold, centered, wrapText, light fill, border -->
+  <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+    <alignment wrapText="1" vertical="center" horizontal="center"/>
+  </xf>
+  <!-- 2: centered cell with border (numbers, section, specialization, FA) -->
+  <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1">
+    <alignment wrapText="1" vertical="center" horizontal="center"/>
+  </xf>
+  <!-- 3: bold centered cell with border (for Total) -->
+  <xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+    <alignment wrapText="1" vertical="center" horizontal="center"/>
+  </xf>
+  <!-- 4: date cell with border -->
+  <xf numFmtId="14" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1">
+    <alignment wrapText="1" vertical="center" horizontal="center"/>
+  </xf>
+</cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
 
