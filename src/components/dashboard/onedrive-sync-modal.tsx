@@ -56,63 +56,69 @@ export function OneDriveSyncModal({
 
   const officeScriptCode = `/**
  * SRM Placement Matrix - Live Auto-Sync for Excel Online
- * Fetches real-time student scores and rubric evaluations from the placement portal.
  */
+interface PortalApiResponse {
+  success: boolean;
+  updatedAt: string;
+  headers: string[];
+  rows: (string | number)[][];
+  count: number;
+}
+
 async function main(workbook: ExcelScript.Workbook) {
-  const sheet = workbook.getActiveWorksheet();
-  
-  // 1. Fetch live data from portal
-  const API_URL = "${jsonFeedUrl}";
-  
-  console.log("Fetching live placement records...");
-  const response = await fetch(API_URL);
+  const sheet: ExcelScript.Worksheet = workbook.getActiveWorksheet();
+  const API_URL: string = "${jsonFeedUrl}";
+
+  console.log("Fetching live placement records from portal...");
+  const response: Response = await fetch(API_URL);
   if (!response.ok) {
     throw new Error("Portal feed error: " + response.status + " " + response.statusText);
   }
-  
-  const data = await response.json();
-  const headers = data.headers;
-  const rows = data.rows;
-  
-  if (!rows || rows.length === 0) {
+
+  const data: PortalApiResponse = (await response.json()) as PortalApiResponse;
+  const headers: string[] = data.headers;
+  const rawRows: (string | number)[][] = data.rows;
+
+  if (!rawRows || rawRows.length === 0) {
     console.log("No student records returned.");
     return;
   }
-  
-  // 2. Clean nulls & prepare dataset: Row 1 = Headers, Rows 2..N = Candidate Data
-  const cleanRows = rows.map((r: (string | number)[]) =>
-    r.map((val) => (val === null || val === undefined ? "" : val))
+
+  // 1. Sanitize null / undefined entries
+  const cleanRows: (string | number)[][] = rawRows.map((row: (string | number)[]) =>
+    row.map((val: string | number) => (val === null || val === undefined ? "" : val))
   );
+
   const allData: (string | number)[][] = [headers, ...cleanRows];
-  const numRows = allData.length;
-  const numCols = headers.length;
-  
-  // 3. Clear existing contents to prevent stale rows
-  const usedRange = sheet.getUsedRange();
+  const numRows: number = allData.length;
+  const numCols: number = headers.length;
+
+  // 2. Clear existing contents to prevent stale rows
+  const usedRange: ExcelScript.Range | undefined = sheet.getUsedRange();
   if (usedRange) {
     usedRange.clear(ExcelScript.ClearApplyTo.contents);
   }
-  
-  // 4. Populate table values
-  const targetRange = sheet.getRangeByIndexes(0, 0, numRows, numCols);
+
+  // 3. Populate table values
+  const targetRange: ExcelScript.Range = sheet.getRangeByIndexes(0, 0, numRows, numCols);
   targetRange.setValues(allData);
-  
-  // 5. Apply dynamic SUM formulas for Column S (Total)
-  for (let i = 2; i <= numRows; i++) {
+
+  // 4. Apply dynamic SUM formulas for Column S (Total)
+  for (let i: number = 2; i <= numRows; i++) {
     sheet.getRange(\`S\${i}\`).setFormula(\`=SUM(F\${i}:R\${i})\`);
   }
-  
-  // 6. Header styling (Grey background, bold, wrapped text)
-  const headerRange = sheet.getRangeByIndexes(0, 0, 1, numCols);
+
+  // 5. Header styling (Grey background, bold, wrapped text)
+  const headerRange: ExcelScript.Range = sheet.getRangeByIndexes(0, 0, 1, numCols);
   headerRange.getFormat().getFill().setColor("#F2F4F7");
   headerRange.getFormat().getFont().setBold(true);
   headerRange.getFormat().getFont().setSize(10);
   headerRange.getFormat().setWrapText(true);
-  
-  // 7. Auto-fit column widths
+
+  // 6. Auto-fit column widths
   targetRange.getFormat().autofitColumns();
-  
-  console.log(\`Successfully synced \${rows.length} candidates from portal!\`);
+
+  console.log(\`Successfully synced \${rawRows.length} candidates from portal!\`);
 }`;
 
   const copyToClipboard = (text: string, key: string) => {
