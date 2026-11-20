@@ -81,36 +81,37 @@ export async function GET() {
 
 /** POST /api/students — student submission; creates or updates, then triggers scrapes */
 export async function POST(req: Request) {
-  // Coordinator kill-switch: when submissions are closed, nobody can submit
-  // or resubmit a profile (evaluators bypass so they can still fix data).
-  const user = await getSessionUser();
-  const isEvaluator = user?.canViewSubmissions ?? false;
-  if (!isEvaluator && (await isSubmissionsLocked())) {
-    return NextResponse.json(
-      { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
-      { status: 423 }
-    );
-  }
-
-  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const parsed = submitSchema.safeParse(body);
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      const key = issue.path.join(".") || "form";
-      if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+    // Coordinator kill-switch: when submissions are closed, nobody can submit
+    // or resubmit a profile (evaluators bypass so they can still fix data).
+    const user = await getSessionUser();
+    const isEvaluator = user?.canViewSubmissions ?? false;
+    if (!isEvaluator && (await isSubmissionsLocked())) {
+      return NextResponse.json(
+        { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
+        { status: 423 }
+      );
     }
-    return NextResponse.json(
-      { error: "Validation failed", fieldErrors },
-      { status: 422 }
-    );
-  }
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const parsed = submitSchema.safeParse(body);
+    if (!parsed.success) {
+      const fieldErrors: Record<string, string> = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path.join(".") || "form";
+        if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+      }
+      return NextResponse.json(
+        { error: "Validation failed", fieldErrors },
+        { status: 422 }
+      );
+    }
 
   const d = parsed.data;
   const proofUrls = (d.proofUrls ?? []).filter((p) => p.label && p.url);
@@ -284,8 +285,15 @@ export async function POST(req: Request) {
     `Student submission: ${student.fullName} (${student.registerNumber})`
   ).catch(console.error);
 
-  return NextResponse.json(
-    { student: toDto(fresh ?? student), message: "Submission received — coding profiles scraped." },
-    { status: existing ? 200 : 201 }
-  );
+    return NextResponse.json(
+      { student: toDto(fresh ?? student), message: "Submission received — coding profiles scraped." },
+      { status: existing ? 200 : 201 }
+    );
+  } catch (err) {
+    console.error("POST /api/students error:", err);
+    return NextResponse.json(
+      { error: (err as Error)?.message || "Failed to submit profile. Please try again." },
+      { status: 500 }
+    );
+  }
 }

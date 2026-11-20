@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { clampScores, assignRanks, autoScoresFor } from "@/lib/score";
+import { clampScores, assignRanks, autoScoresFor, suggestAcademicScore } from "@/lib/score";
 import { toDto, parseScoreAudit } from "@/lib/dto";
 import { requireScorer, getSessionUser, canWriteScoreField, hasScope } from "@/lib/auth";
 import { scopesAreFull, docCategoryScope, linkCategoryScope } from "@/lib/scopes";
@@ -24,6 +24,14 @@ const scoreSchema = z.object({
       inhouse: z.coerce.number().optional(),
       membership: z.coerce.number().optional(),
       shl: z.coerce.number().optional(),
+    })
+    .optional(),
+  academicMarks: z
+    .object({
+      tenthPercent: z.coerce.number().min(0, "Must be ≥ 0").max(100, "Must be ≤ 100").optional(),
+      twelfthPercent: z.coerce.number().min(0, "Must be ≥ 0").max(100, "Must be ≤ 100").optional(),
+      sgpaSem1: z.coerce.number().min(0, "Must be ≥ 0").max(10, "Must be ≤ 10").optional(),
+      sgpaSem2: z.coerce.number().min(0, "Must be ≥ 0").max(10, "Must be ≤ 10").optional(),
     })
     .optional(),
   verify: z.boolean().optional(),
@@ -90,6 +98,29 @@ export async function PATCH(
     ? requestedReset
     : requestedReset.filter((f) => canWriteScoreField(user, f));
 
+  // Academic marks editing by authorized coordinators or super admin
+  const academicMarksInput = parsed.data.academicMarks;
+  if (academicMarksInput && !user.isSuperAdmin && !canWriteScoreField(user, "academic")) {
+    return NextResponse.json(
+      { error: "You do not have permission to edit student academic marks" },
+      { status: 403 }
+    );
+  }
+
+  const newTenth = academicMarksInput?.tenthPercent !== undefined ? academicMarksInput.tenthPercent : student.tenthPercent;
+  const newTwelfth = academicMarksInput?.twelfthPercent !== undefined ? academicMarksInput.twelfthPercent : student.twelfthPercent;
+  const newSgpa1 = academicMarksInput?.sgpaSem1 !== undefined ? academicMarksInput.sgpaSem1 : student.sgpaSem1;
+  const newSgpa2 = academicMarksInput?.sgpaSem2 !== undefined ? academicMarksInput.sgpaSem2 : student.sgpaSem2;
+  const newCgpa = Math.round(((newSgpa1 + newSgpa2) / 2) * 100) / 100;
+
+  const academicMarksChanged =
+    academicMarksInput !== undefined &&
+    (newTenth !== student.tenthPercent ||
+      newTwelfth !== student.twelfthPercent ||
+      newSgpa1 !== student.sgpaSem1 ||
+      newSgpa2 !== student.sgpaSem2 ||
+      newCgpa !== student.cgpa);
+
   // Recompute the automatic components: overridden ones keep their stored
   // value; a component being reset right now takes its RAW calculated value
   // (marks bands / latest scrapes). Then merge coordinator-entered sections
@@ -97,7 +128,11 @@ export async function PATCH(
   const AUTO = await autoScoresFor(student.id);
   const RAW = autoReset.length ? await autoScoresFor(student.id, { respectOverrides: false }) : AUTO;
   const merged = {
-    academic: autoReset.includes("academic") ? RAW.academic : AUTO.academic,
+    academic: autoReset.includes("academic")
+      ? RAW.academic
+      : academicMarksChanged && incoming.academic === undefined
+        ? suggestAcademicScore(newTenth, newTwelfth, newCgpa)
+        : AUTO.academic,
     github: autoReset.includes("github") ? RAW.github : AUTO.github,
     coding: autoReset.includes("coding") ? RAW.coding : AUTO.coding,
     internship: incoming.internship ?? student.scoreInternship,
@@ -238,6 +273,16 @@ export async function PATCH(
     });
   }
 
+  if (academicMarksChanged) {
+    newEntries.push({
+      field: "academic",
+      value: clamped.academic,
+      action: "override",
+      byName: user.fullName,
+      at: now.toISOString(),
+    });
+  }
+
   const scoreAudit = JSON.stringify(
     [...newEntries, ...parseScoreAudit(student.scoreAudit)].slice(0, 200)
   );
@@ -245,6 +290,11 @@ export async function PATCH(
   const updated = await prisma.student.update({
     where: { id: student.id },
     data: {
+      tenthPercent: newTenth,
+      twelfthPercent: newTwelfth,
+      sgpaSem1: newSgpa1,
+      sgpaSem2: newSgpa2,
+      cgpa: newCgpa,
       scoreAcademic: clamped.academic,
       scoreGithub: clamped.github,
       scoreCoding: clamped.coding,

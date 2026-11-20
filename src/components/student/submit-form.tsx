@@ -229,15 +229,25 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
         }),
       });
 
-      const body = await res.json();
+      const text = await res.text();
+      let body: { student?: StudentDto; message?: string; error?: string } | null = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        // not json
+      }
       if (!res.ok) {
-        setTopError(body?.error ?? "Registration submission failed.");
+        setTopError(body?.error ?? `Registration submission failed (Server status ${res.status}). Please try again.`);
+        return;
+      }
+      if (!body?.student) {
+        setTopError("Invalid submission response received. Please try again.");
         return;
       }
 
-      setResult({ student: body.student, message: body.message });
+      setResult({ student: body.student, message: body.message || "Submission received" });
     } catch {
-      setTopError("Network connection error. Could not submit profile.");
+      setTopError("Network connection error. Could not reach server. Please try again.");
     } finally {
       setSubmitting(false);
     }

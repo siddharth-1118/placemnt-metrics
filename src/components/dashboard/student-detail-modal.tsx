@@ -243,6 +243,14 @@ export function StudentDetailModal({
   /** True when the coordinator note was edited — only then is it sent. */
   const [noteDirty, setNoteDirty] = useState(false);
   const [note, setNote] = useState("");
+  const [editingAcademic, setEditingAcademic] = useState(false);
+  const [academicDirty, setAcademicDirty] = useState(false);
+  const [academicForm, setAcademicForm] = useState({
+    tenthPercent: "",
+    twelfthPercent: "",
+    sgpaSem1: "",
+    sgpaSem2: "",
+  });
   const [saving, setSaving] = useState(false);
   const [rescraping, setRescraping] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -275,6 +283,14 @@ export function StudentDetailModal({
         setAutoReset(new Set());
         setNote(body.student.coordinatorNote ?? "");
         setNoteDirty(false);
+        setAcademicForm({
+          tenthPercent: String(body.student.tenthPercent ?? ""),
+          twelfthPercent: String(body.student.twelfthPercent ?? ""),
+          sgpaSem1: String(body.student.sgpaSem1 ?? ""),
+          sgpaSem2: String(body.student.sgpaSem2 ?? ""),
+        });
+        setAcademicDirty(false);
+        setEditingAcademic(false);
       } catch (e) {
         if (alive) setError((e as Error).message);
       } finally {
@@ -459,6 +475,16 @@ export function StudentDetailModal({
             })
           ),
           ...(autoReset.size > 0 ? { autoReset: [...autoReset] } : {}),
+          ...(academicDirty
+            ? {
+                academicMarks: {
+                  tenthPercent: Number(academicForm.tenthPercent),
+                  twelfthPercent: Number(academicForm.twelfthPercent),
+                  sgpaSem1: Number(academicForm.sgpaSem1),
+                  sgpaSem2: Number(academicForm.sgpaSem2),
+                },
+              }
+            : {}),
           coordinatorNote: noteDirty ? note : undefined,
           ...(verify === undefined ? {} : { verify }),
         }),
@@ -487,6 +513,14 @@ export function StudentDetailModal({
       setAutoReset(new Set());
       setNote(body.student.coordinatorNote ?? "");
       setNoteDirty(false);
+      setAcademicDirty(false);
+      setEditingAcademic(false);
+      setAcademicForm({
+        tenthPercent: String(body.student.tenthPercent ?? ""),
+        twelfthPercent: String(body.student.twelfthPercent ?? ""),
+        sgpaSem1: String(body.student.sgpaSem1 ?? ""),
+        sgpaSem2: String(body.student.sgpaSem2 ?? ""),
+      });
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
       onChanged();
@@ -647,26 +681,118 @@ export function StudentDetailModal({
                   {/* Academic marks — visible with the ACADEMIC scope */}
                   {canViewSection("ACADEMIC") && (
                     <div className="space-y-1.5 text-sm">
-                      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        <GraduationCap className="h-3.5 w-3.5" /> Academic marks
-                      </p>
-                      <p className="flex items-center justify-between gap-3">
-                        <span className="text-muted-foreground">10th</span>
-                        <span className="font-semibold tabular-nums">{fmtPct(student.tenthPercent)}</span>
-                      </p>
-                      <p className="flex items-center justify-between gap-3">
-                        <span className="text-muted-foreground">12th</span>
-                        <span className="font-semibold tabular-nums">{fmtPct(student.twelfthPercent)}</span>
-                      </p>
-                      <p className="flex items-center justify-between gap-3">
-                        <span className="text-muted-foreground">CGPA</span>
-                        <span className="font-semibold tabular-nums">
-                          {student.cgpa.toFixed(2)}
-                          <span className="ml-1 text-[10px] font-normal text-muted-foreground">
-                            (S1 {student.sgpaSem1.toFixed(2)} + S2 {student.sgpaSem2.toFixed(2)}) ÷ 2
-                          </span>
-                        </span>
-                      </p>
+                      <div className="flex items-center justify-between gap-1.5">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <GraduationCap className="h-3.5 w-3.5" /> Academic marks
+                        </p>
+                        {(isSuperAdmin || canWriteScoreField(viewer, "academic")) && (
+                          <button
+                            type="button"
+                            className="text-[11px] font-medium text-emerald-700 underline hover:text-emerald-800 dark:text-emerald-400"
+                            onClick={() => setEditingAcademic(!editingAcademic)}
+                          >
+                            {editingAcademic ? "Cancel Edit" : "Edit Marks"}
+                          </button>
+                        )}
+                      </div>
+
+                      {editingAcademic ? (
+                        <div className="space-y-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-xs">
+                          <div>
+                            <span className="text-[10px] text-muted-foreground">10th Board % (0–100)</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step="0.1"
+                              className="h-7 text-xs font-semibold"
+                              value={academicForm.tenthPercent}
+                              onChange={(e) => {
+                                setAcademicForm((f) => ({ ...f, tenthPercent: e.target.value }));
+                                setAcademicDirty(true);
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-muted-foreground">12th Board % (0–100)</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step="0.1"
+                              className="h-7 text-xs font-semibold"
+                              value={academicForm.twelfthPercent}
+                              onChange={(e) => {
+                                setAcademicForm((f) => ({ ...f, twelfthPercent: e.target.value }));
+                                setAcademicDirty(true);
+                              }}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <div>
+                              <span className="text-[10px] text-muted-foreground">Sem 1 SGPA</span>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={10}
+                                step="0.01"
+                                className="h-7 text-xs font-semibold"
+                                value={academicForm.sgpaSem1}
+                                onChange={(e) => {
+                                  setAcademicForm((f) => ({ ...f, sgpaSem1: e.target.value }));
+                                  setAcademicDirty(true);
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-muted-foreground">Sem 2 SGPA</span>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={10}
+                                step="0.01"
+                                className="h-7 text-xs font-semibold"
+                                value={academicForm.sgpaSem2}
+                                onChange={(e) => {
+                                  setAcademicForm((f) => ({ ...f, sgpaSem2: e.target.value }));
+                                  setAcademicDirty(true);
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Calculated CGPA:{" "}
+                            <strong className="text-foreground">
+                              {(
+                                ((Number(academicForm.sgpaSem1) || 0) +
+                                  (Number(academicForm.sgpaSem2) || 0)) /
+                                2
+                              ).toFixed(2)}
+                            </strong>
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="flex items-center justify-between gap-3">
+                            <span className="text-muted-foreground">10th</span>
+                            <span className="font-semibold tabular-nums">{fmtPct(student.tenthPercent)}</span>
+                          </p>
+                          <p className="flex items-center justify-between gap-3">
+                            <span className="text-muted-foreground">12th</span>
+                            <span className="font-semibold tabular-nums">{fmtPct(student.twelfthPercent)}</span>
+                          </p>
+                          <p className="flex items-center justify-between gap-3">
+                            <span className="text-muted-foreground">CGPA</span>
+                            <span className="font-semibold tabular-nums">
+                              {student.cgpa.toFixed(2)}
+                              <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                                (S1 {student.sgpaSem1.toFixed(2)} + S2 {student.sgpaSem2.toFixed(2)}) ÷ 2
+                              </span>
+                            </span>
+                          </p>
+                        </>
+                      )}
+
                       <p className="flex items-center justify-between gap-3 border-t pt-1.5">
                         <span className="text-muted-foreground">Auto score</span>
                         <Badge variant="secondary">
