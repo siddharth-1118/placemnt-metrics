@@ -122,13 +122,12 @@ export const hasScopeClient = hasScope;
 
 /**
  * Coordinator-writable score fields, one per section — a section coordinator
- * verifies that section's evidence AND enters its marks.
- *
- * Academic, GitHub and Coding are NOT listed: they are calculated
- * automatically (band tables from marks, and the live GitHub/LeetCode
- * scrapes) and the score API rejects manual writes to them.
+ * verifies that section's evidence AND enters/adjusts its marks.
  */
 export const SCORE_FIELD_SCOPES: Record<string, ScoreScope[]> = {
+  academic: ["ACADEMIC"],
+  github: ["GITHUB"],
+  coding: ["CODING"],
   internship: ["INTERNSHIP"],
   certifications: ["CERTIFICATIONS"],
   projects: ["PROJECTS"],

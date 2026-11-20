@@ -3,8 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { clampScores, assignRanks, autoScoresFor } from "@/lib/score";
 import { toDto, parseScoreAudit } from "@/lib/dto";
-import { requireScorer, getSessionUser, canWriteScoreField } from "@/lib/auth";
-import { scopesAreFull } from "@/lib/scopes";
+import { requireScorer, getSessionUser, canWriteScoreField, hasScope } from "@/lib/auth";
+import { scopesAreFull, docCategoryScope, linkCategoryScope } from "@/lib/scopes";
 import { SCORE_CAPS, type ScoreAuditEntry } from "@/lib/types";
 import { capturePortalArchive } from "@/lib/auto-archive";
 
@@ -61,27 +61,23 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid payload", issues: parsed.error.issues }, { status: 422 });
   }  const incoming = parsed.data.scores ?? {};
 
-  // Academic, GitHub and Coding are system-calculated (band tables from
-  // marks + the live scrapes). Coordinators can never write them; the super
-  // admin MAY override them manually — the stored value then wins over
-  // future rescrapes/recalculations until the super admin clears it.
+  // Academic, GitHub and Coding are calculated automatically by default, but
+  // assigned section coordinators (or super admins) may review and manually award/override marks.
   const AUTO_FIELDS = ["academic", "github", "coding"] as const;
   for (const key of AUTO_FIELDS) {
-    if (incoming[key] !== undefined && !user.isSuperAdmin) {
+    if (incoming[key] !== undefined && !user.isSuperAdmin && !canWriteScoreField(user, key)) {
       return NextResponse.json(
-        { error: `${key} marks are calculated automatically and cannot be entered manually` },
-        { status: 422 }
+        { error: `You do not have permission to score ${key} marks` },
+        { status: 403 }
       );
     }
   }
 
   // Scoped coordinators may only write their assigned rubric sections (1:1
   // with the submission sections). Super admins and coordinators with no
-  // scope restrictions pass every check. Auto fields are handled above
-  // (super-admin override allowed), so they are skipped here.
+  // scope restrictions pass every check.
   for (const key of Object.keys(incoming)) {
-    if ((AUTO_FIELDS as readonly string[]).includes(key) && user.isSuperAdmin) continue;
-    if (!canWriteScoreField(user, key)) {
+    if (!user.isSuperAdmin && !canWriteScoreField(user, key)) {
       return NextResponse.json(
         { error: "You do not have permission to score this section" },
         { status: 403 }
@@ -89,7 +85,10 @@ export async function PATCH(
     }
   }
 
-  const autoReset = user.isSuperAdmin ? (parsed.data.autoReset ?? []) : [];
+  const requestedReset = parsed.data.autoReset ?? [];
+  const autoReset = user.isSuperAdmin
+    ? requestedReset
+    : requestedReset.filter((f) => canWriteScoreField(user, f));
 
   // Recompute the automatic components: overridden ones keep their stored
   // value; a component being reset right now takes its RAW calculated value
@@ -110,13 +109,16 @@ export async function PATCH(
     membership: incoming.membership ?? student.scoreMembership,
     shl: incoming.shl ?? student.scoreShl,
   };
-  // Super admin explicitly entered an auto component → apply it and flag the
-  // override so future rescrapes/recalculations keep this value until the
-  // super admin clears it (autoReset below).
-  if (user.isSuperAdmin) {
-    if (incoming.academic !== undefined) merged.academic = incoming.academic;
-    if (incoming.github !== undefined) merged.github = incoming.github;
-    if (incoming.coding !== undefined) merged.coding = incoming.coding;
+  // Evaluator explicitly entered an auto component → apply it and flag the
+  // override so future rescrapes/recalculations keep this value until reset.
+  if (incoming.academic !== undefined && (user.isSuperAdmin || canWriteScoreField(user, "academic"))) {
+    merged.academic = incoming.academic;
+  }
+  if (incoming.github !== undefined && (user.isSuperAdmin || canWriteScoreField(user, "github"))) {
+    merged.github = incoming.github;
+  }
+  if (incoming.coding !== undefined && (user.isSuperAdmin || canWriteScoreField(user, "coding"))) {
+    merged.coding = incoming.coding;
   }
   const clamped = clampScores(merged);
 
@@ -171,36 +173,49 @@ export async function PATCH(
   // have verified all documents/links and a main coordinator or the super
   // admin signs it off.
   const verifyState = parsed.data.verify;
-  if (verifyState !== undefined && !user.isSuperAdmin && !scopesAreFull(user.permissionScopes)) {
+  if (verifyState !== undefined && !user.isSuperAdmin && !user.canScore) {
     return NextResponse.json(
       {
-        error:
-          "Only all-sections (full access) main coordinators can change the final verification state — you can still save your section scores.",
+        error: "You do not have permission to verify candidate submissions.",
       },
       { status: 403 }
     );
   }
 
   if (verifyState === true) {
-    const pendingDocs = await prisma.document.count({
+    // Only block verification if there are pending items within the coordinator's assigned scope.
+    // Unrestricted reviewers / super admins verify against all sections.
+    const isFullReviewer = user.isSuperAdmin || scopesAreFull(user.permissionScopes);
+
+    const pendingDocs = await prisma.document.findMany({
       where: { studentId: student.id, status: "PENDING" },
+      select: { category: true },
     });
-    if (pendingDocs > 0) {
+    const scopedPendingDocs = isFullReviewer
+      ? pendingDocs
+      : pendingDocs.filter((d) => hasScope(user, docCategoryScope(d.category)));
+
+    if (scopedPendingDocs.length > 0) {
       return NextResponse.json(
         {
-          error: `Cannot mark candidate as verified: ${pendingDocs} document proof(s) are still pending coordinator review. All documents must be verified or rejected before final approval.`,
+          error: `Cannot mark candidate as verified: ${scopedPendingDocs.length} document proof(s) in your assigned sections are still pending review. All evidence in your scope must be verified or rejected first.`,
         },
         { status: 422 }
       );
     }
 
-    const pendingLinks = await prisma.projectLink.count({
+    const pendingLinks = await prisma.projectLink.findMany({
       where: { studentId: student.id, status: "PENDING" },
+      select: { category: true },
     });
-    if (pendingLinks > 0) {
+    const scopedPendingLinks = isFullReviewer
+      ? pendingLinks
+      : pendingLinks.filter((l) => hasScope(user, linkCategoryScope(l.category)));
+
+    if (scopedPendingLinks.length > 0) {
       return NextResponse.json(
         {
-          error: `Cannot mark candidate as verified: ${pendingLinks} project link(s) are still pending coordinator review. All links must be verified or rejected before final approval.`,
+          error: `Cannot mark candidate as verified: ${scopedPendingLinks.length} project link(s) in your assigned sections are still pending review. All evidence in your scope must be verified or rejected first.`,
         },
         { status: 422 }
       );
@@ -210,6 +225,14 @@ export async function PATCH(
       field: "finalVerification",
       value: clamped.total,
       action: "verified",
+      byName: user.fullName,
+      at: now.toISOString(),
+    });
+  } else if (verifyState === false) {
+    newEntries.push({
+      field: "finalVerification",
+      value: clamped.total,
+      action: "reset",
       byName: user.fullName,
       at: now.toISOString(),
     });
@@ -225,11 +248,11 @@ export async function PATCH(
       scoreAcademic: clamped.academic,
       scoreGithub: clamped.github,
       scoreCoding: clamped.coding,
-      academicOverridden: user.isSuperAdmin && incoming.academic !== undefined ? true
+      academicOverridden: (incoming.academic !== undefined && (user.isSuperAdmin || canWriteScoreField(user, "academic"))) ? true
         : autoReset.includes("academic") ? false : student.academicOverridden,
-      githubOverridden: user.isSuperAdmin && incoming.github !== undefined ? true
+      githubOverridden: (incoming.github !== undefined && (user.isSuperAdmin || canWriteScoreField(user, "github"))) ? true
         : autoReset.includes("github") ? false : student.githubOverridden,
-      codingOverridden: user.isSuperAdmin && incoming.coding !== undefined ? true
+      codingOverridden: (incoming.coding !== undefined && (user.isSuperAdmin || canWriteScoreField(user, "coding"))) ? true
         : autoReset.includes("coding") ? false : student.codingOverridden,
       scoreInternship: clamped.internship,
       scoreCertifications: clamped.certifications,
@@ -255,7 +278,7 @@ export async function PATCH(
 
   const fresh = await prisma.student.findUniqueOrThrow({
     where: { id: student.id },
-    include: { scrapes: true },
+    include: { scrapes: true, documents: true, projectLinks: true },
   });
 
   capturePortalArchive(

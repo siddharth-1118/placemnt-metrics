@@ -288,11 +288,10 @@ export function StudentDetailModal({
   );
 
   /**
-   * Turning the whole submission green is reserved for ALL-SECTION (full
-   * access) reviewers. Scoped coordinators still verify their own sections
-   * and enter their own marks — they just cannot give the final sign-off.
+   * Evaluators with scoring permissions (canScore) or super admins can sign off
+   * and verify candidate submissions.
    */
-  const canFinalVerify = isSuperAdmin || scopesAreFull(permissionScopes);
+  const canFinalVerify = Boolean(isSuperAdmin || canScore);
 
   /** Newest score-audit entry per rubric field → who set this section last. */
   const lastByField = useMemo(() => {
@@ -329,13 +328,24 @@ export function StudentDetailModal({
     return { finalVerifier, sectionReviewers, allReviewers };
   }, [student]);
 
+  const isFullReviewer = isSuperAdmin || scopesAreFull(permissionScopes);
   const pendingDocsCount = useMemo(
-    () => student?.documents.filter((d) => d.status === "PENDING").length ?? 0,
-    [student]
+    () =>
+      student?.documents.filter(
+        (d) =>
+          d.status === "PENDING" &&
+          (isFullReviewer || hasScopeClient(viewer, docCategoryScope(d.category)))
+      ).length ?? 0,
+    [student, isFullReviewer, viewer]
   );
   const pendingLinksCount = useMemo(
-    () => student?.projectLinks.filter((l) => l.status === "PENDING").length ?? 0,
-    [student]
+    () =>
+      student?.projectLinks.filter(
+        (l) =>
+          l.status === "PENDING" &&
+          (isFullReviewer || hasScopeClient(viewer, linkCategoryScope(l.category)))
+      ).length ?? 0,
+    [student, isFullReviewer, viewer]
   );
   const totalPendingReviews = pendingDocsCount + pendingLinksCount;
 
@@ -430,11 +440,11 @@ export function StudentDetailModal({
             }).filter(([k]) => {
               const key = k as keyof ScoreBreakdown;
               if (!dirty.has(key)) return false;
-              if (isAutoField(key)) return isSuperAdmin && !autoReset.has(key);
+              if (isAutoField(key)) return (isSuperAdmin || canWriteScoreField(viewer, key)) && !autoReset.has(key);
               return scoreFieldAllowed(key);
             })
           ),
-          ...(isSuperAdmin && autoReset.size > 0 ? { autoReset: [...autoReset] } : {}),
+          ...(autoReset.size > 0 ? { autoReset: [...autoReset] } : {}),
           coordinatorNote: noteDirty ? note : undefined,
           ...(verify === undefined ? {} : { verify }),
         }),
@@ -907,9 +917,9 @@ export function StudentDetailModal({
                               </td>
                               <td className="py-2 pr-2 text-[11px]">
                                 {isAuto ? (
-                                  last?.action === "override" ? (
-                                    <span className="text-amber-700 dark:text-amber-400">
-                                      Overridden by {last.byName} ({timeAgo(last.at)})
+                                  last?.action === "override" || last?.action === "entered" ? (
+                                    <span className="text-emerald-700 dark:text-emerald-400">
+                                      Evaluated by <strong>{last.byName}</strong> ({timeAgo(last.at)})
                                     </span>
                                   ) : (
                                     <span className="text-sky-700 dark:text-sky-400">
@@ -972,6 +982,10 @@ export function StudentDetailModal({
                                 ) : totalRejected > 0 ? (
                                   <Badge variant="destructive" className="text-[10px]">
                                     Rejected
+                                  </Badge>
+                                ) : student.status === "VERIFIED" || (isAuto && (Boolean(student.autoOverrides?.[sec.fieldKey as AutoScoreField]) || last?.action === "entered" || last?.action === "override")) ? (
+                                  <Badge variant="success" className="text-[10px]">
+                                    Verified
                                   </Badge>
                                 ) : isAuto ? (
                                   <Badge variant="secondary" className="text-[10px]">
@@ -1048,6 +1062,7 @@ export function StudentDetailModal({
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {SCORE_FIELDS.filter((f) => isSuperAdmin || scoreFieldAllowed(f.key)).map((f) => {
                       const isAuto = isAutoField(f.key);
+                      const canWriteThis = isSuperAdmin || canWriteScoreField(viewer, f.key);
                       const overridden = isAuto ? (student.autoOverrides?.[f.key as AutoScoreField] ?? false) : false;
                       const isResetting = isAuto ? autoReset.has(f.key as AutoScoreField) : false;
                       const touched = isAuto && (overridden || dirty.has(f.key)) && !isResetting;
@@ -1056,7 +1071,7 @@ export function StudentDetailModal({
                       <div key={f.key} className="space-y-1">
                         <Label className="text-xs">
                           {f.label} <span className="text-muted-foreground">/ {f.cap}</span>
-                          {isAuto && !isSuperAdmin && (
+                          {isAuto && !canWriteThis && (
                             <span
                               className="ml-1.5 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-600"
                               title="Calculated automatically from marks bands / live profile scrapes — read-only"
@@ -1086,8 +1101,8 @@ export function StudentDetailModal({
                           min={0}
                           max={f.cap}
                           step="0.5"
-                          disabled={isAuto && !isSuperAdmin}
-                          title={isAuto && !isSuperAdmin ? "Calculated automatically — only the super admin can change this" : undefined}
+                          disabled={!canWriteThis}
+                          title={!canWriteThis ? "Calculated automatically — only assigned coordinators or super admins can change this" : undefined}
                           value={String(scores[f.key])}
                           onChange={(e) => {
                             const v = e.target.value === "" ? 0 : Math.min(f.cap, Math.max(0, Number(e.target.value)));
@@ -1112,7 +1127,7 @@ export function StudentDetailModal({
                             {last.action === "auto" ? "· system" : ""} · {last.value.toFixed(1)} M · {timeAgo(last.at)}
                           </p>
                         )}
-                        {isAuto && isSuperAdmin && touched && (
+                        {isAuto && canWriteThis && touched && (
                           <button
                             type="button"
                             className="text-[10px] font-medium text-muted-foreground underline hover:text-foreground"
