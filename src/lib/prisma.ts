@@ -7,6 +7,17 @@ function getCleanDatabaseUrl(): string | undefined {
   if (raw.startsWith("postgres://") || raw.startsWith("postgresql://")) {
     try {
       const url = new URL(raw);
+      // Auto-switch Supabase pooler from session mode (5432, pool_size: 15) to transaction mode (6543)
+      // to permanently eliminate FATAL: (EMAXCONNSESSION) max clients reached in session mode.
+      if (url.hostname.includes("pooler.supabase.com")) {
+        if (url.port === "5432") {
+          url.port = "6543";
+        }
+        if (!url.searchParams.has("pgbouncer")) {
+          url.searchParams.set("pgbouncer", "true");
+        }
+      }
+
       // Enforce connection_limit=1 on serverless so each lambda holds at most 1 connection.
       // This prevents bursting beyond Supabase's pool_size: 15 limit (EMAXCONNSESSION).
       if (!url.searchParams.has("connection_limit")) {

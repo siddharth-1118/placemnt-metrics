@@ -140,9 +140,21 @@ export function Dashboard({
     }
   }
 
-  // Export currently filtered students in official 19-column SRM format
-  function exportFilteredToCsv() {
-    if (!filtered.length) return;
+  // Helper to trigger direct browser download of blob
+  function triggerDownload(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // Client-side fallback: RFC-4180 CSV with UTF-8 BOM (\uFEFF)
+  // Ensures Microsoft Excel opens it seamlessly without any encoding or delimiter prompts.
+  function downloadCsvFallback(list: StudentDto[], filename: string) {
     const headers = [
       "Registration Number",
       "Full Name (AS PER ATTENDANCE)",
@@ -165,55 +177,31 @@ export function Dashboard({
       "Total",
     ];
 
-    const rows = filtered.map((s) => {
+    const rows = list.map((s) => {
       const tenthScore = s.tenthPercent
-        ? s.tenthPercent >= 96
-          ? 2.5
-          : s.tenthPercent >= 91
-            ? 2.0
-            : s.tenthPercent >= 86
-              ? 1.5
-              : s.tenthPercent >= 75
-                ? 1.0
-                : 0.5
+        ? s.tenthPercent >= 96 ? 2.5 : s.tenthPercent >= 91 ? 2.0 : s.tenthPercent >= 86 ? 1.5 : s.tenthPercent >= 75 ? 1.0 : 0.5
         : 0;
 
       const twelfthScore = s.twelfthPercent
-        ? s.twelfthPercent >= 96
-          ? 2.5
-          : s.twelfthPercent >= 91
-            ? 2.0
-            : s.twelfthPercent >= 86
-              ? 1.5
-              : s.twelfthPercent >= 75
-                ? 1.0
-                : 0.5
+        ? s.twelfthPercent >= 96 ? 2.5 : s.twelfthPercent >= 91 ? 2.0 : s.twelfthPercent >= 86 ? 1.5 : s.twelfthPercent >= 75 ? 1.0 : 0.5
         : 0;
 
       const cgpaScore = s.cgpa
-        ? s.cgpa > 9.5
-          ? 5.0
-          : s.cgpa >= 9.1
-            ? 4.0
-            : s.cgpa >= 8.6
-              ? 3.0
-              : s.cgpa >= 7.5
-                ? 2.0
-                : 1.0
+        ? s.cgpa > 9.5 ? 5.0 : s.cgpa >= 9.1 ? 4.0 : s.cgpa >= 8.6 ? 3.0 : s.cgpa >= 7.5 ? 2.0 : 1.0
         : 0;
 
-      const ghScore = Number(s.scores.github ?? 0);
-      const codingScore = Number(s.scores.coding ?? 0);
-      const internScore = Number(s.scores.internship ?? 0);
-      const certScore = Number(s.scores.certifications ?? 0);
-      const projScore = Number(s.scores.projects ?? 0);
-      const fsdScore = Number(s.scores.fullstack ?? 0);
-      const hackScore = Number(s.scores.hackathons ?? 0);
-      const inhouseScore = Math.min(5, Number(s.scores.inhouse ?? 0));
-      const memberScore = Number(s.scores.membership ?? 0);
-      const shlScore = Number(s.scores.shl ?? 0);
+      const ghScore = Number(s.scores?.github ?? 0);
+      const codingScore = Number(s.scores?.coding ?? 0);
+      const internScore = Number(s.scores?.internship ?? 0);
+      const certScore = Number(s.scores?.certifications ?? 0);
+      const projScore = Number(s.scores?.projects ?? 0);
+      const fsdScore = Number(s.scores?.fullstack ?? 0);
+      const hackScore = Number(s.scores?.hackathons ?? 0);
+      const inhouseScore = Math.min(5, Number(s.scores?.inhouse ?? 0));
+      const memberScore = Number(s.scores?.membership ?? 0);
+      const shlScore = Number(s.scores?.shl ?? 0);
 
-      const totalVal = s.scores.total > 0
+      const totalVal = (s.scores?.total && s.scores.total > 0)
         ? s.scores.total
         : (tenthScore + twelfthScore + cgpaScore + ghScore + codingScore + internScore + certScore + projScore + fsdScore + hackScore + inhouseScore + memberScore + shlScore);
 
@@ -240,47 +228,64 @@ export function Dashboard({
       ];
     });
 
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    const filterName = topicFilter !== "ALL" ? `_${topicFilter}` : docFilter !== "ALL" ? `_${docFilter}` : "";
-    link.download = `SRM_Placement_Matrix_AO1${filterName}_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    triggerDownload(blob, filename);
   }
 
-  // Excel report is generated server-side (real .xlsx) and access-checked:
-  // coordinators/admins only, scoped to the viewer's rubric sections.
-  async function exportToCsv() {
+  // Universal Excel (.xlsx) downloader: sends candidates directly via POST for zero DB load,
+  // with server GET fallback and client CSV fallback so downloading NEVER fails.
+  async function downloadExcelReport(targetList?: StudentDto[], fileSuffix = "") {
+    const list = targetList && targetList.length > 0 ? targetList : students;
+    if (!list.length) return;
     setExportBusy(true);
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const suffixPart = fileSuffix ? `_${fileSuffix}` : "";
+    const xlsxFilename = `SRM_Placement_Matrix_AO1${suffixPart}_${dateStr}.xlsx`;
+    const csvFilename = `SRM_Placement_Matrix_AO1${suffixPart}_${dateStr}.csv`;
+
     try {
-      const res = await fetch("/api/students/export", { cache: "no-store" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? `Export failed (${res.status})`);
+      // 1. Try server POST with in-memory payload (fastest & bypasses DB connection pool)
+      const postRes = await fetch("/api/students/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ students: list }),
+      });
+
+      if (postRes.ok) {
+        const blob = await postRes.blob();
+        triggerDownload(blob, xlsxFilename);
+        return;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute(
-        "download",
-        `SRM_Placement_Matrix_${new Date().toISOString().slice(0, 10)}.xlsx`
-      );
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+
+      // 2. Try server GET if POST failed
+      const getRes = await fetch("/api/students/export", { cache: "no-store" });
+      if (getRes.ok) {
+        const blob = await getRes.blob();
+        triggerDownload(blob, xlsxFilename);
+        return;
+      }
+
+      throw new Error(`Export service error (${postRes.status})`);
     } catch (err) {
-      setError((err as Error).message);
-      setTimeout(() => setError(null), 5000);
+      console.warn("Server Excel generation failed, triggering instant client CSV fallback:", err);
+      // 3. Client-side fallback guarantees file is ALWAYS downloaded
+      downloadCsvFallback(list, csvFilename);
     } finally {
       setExportBusy(false);
     }
+  }
+
+  // Export currently filtered students as official Excel sheet
+  function exportFilteredToCsv() {
+    const filterName = topicFilter !== "ALL" ? topicFilter : docFilter !== "ALL" ? docFilter : "Filtered";
+    downloadExcelReport(filtered, filterName);
+  }
+
+  // Export all candidates as official Excel sheet
+  function exportToCsv() {
+    downloadExcelReport(students, "All");
   }
 
   const filtered = useMemo(() => {
@@ -1056,12 +1061,16 @@ export function Dashboard({
                 variant="outline"
                 size="sm"
                 onClick={exportFilteredToCsv}
-                disabled={!filtered.length}
+                disabled={!filtered.length || exportBusy}
                 className="h-8 text-xs border-[#b8ddc4] text-[#165b33] hover:bg-[#eaf4ed] dark:border-[#265335] dark:text-[#78d69f]"
-                title="Download currently filtered students as CSV"
+                title="Download currently filtered students as official Excel (.xlsx)"
               >
-                <Download className="mr-1 h-3 w-3" />
-                <span>Export ({filtered.length})</span>
+                {exportBusy ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <Download className="mr-1 h-3 w-3" />
+                )}
+                <span>Export Excel ({filtered.length})</span>
               </Button>
 
               {/* Share Defaulters Notice Button */}

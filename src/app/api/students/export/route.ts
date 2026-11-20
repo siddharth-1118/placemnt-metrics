@@ -5,47 +5,42 @@ import { buildXlsx, type XlsxRow } from "@/lib/xlsx";
 
 export const dynamic = "force-dynamic";
 
-/**
- * GET /api/students/export
- *
- * Exports student candidate records in the exact official SRM Placement Evaluation format:
- *
- * Columns (19 total):
- *  1. Registration Number
- *  2. Full Name (AS PER ATTENDANCE)
- *  3. Section
- *  4. Specialization
- *  5. Faculty Advisor
- *  6. 10th Percentage (2.5)
- *  7. 12th Percentage (2.5)
- *  8. CGPA (5)
- *  9. Github Profile (15)
- * 10. Coding Practice Platform (10)
- * 11. Internship Experience (10)
- * 12. Skillset & Global Certifications Completed (15)
- * 13. Projects Done (5)
- * 14. Full Stack Developer Experience (5)
- * 15. Coding Competition & Hackathons Won (10)
- * 16. Inhouse Projects Done (5)
- * 17. Membership of Professional Bodies (2)
- * 18. SHL Assessment / Talent Discovery Assessment / N.C.A.T (National Competence & Employability Test) (13)
- * 19. Total
- */
-export async function GET() {
-  const { error } = await requireEvaluator();
-  if (error) return error;
+interface ExportableCandidate {
+  registerNumber: string;
+  fullName: string;
+  section?: string | null;
+  specialization?: string | null;
+  facultyAdvisor?: string | null;
+  tenthPercent?: number | null;
+  twelfthPercent?: number | null;
+  cgpa?: number | null;
+  scoreGithub?: number | null;
+  scoreCoding?: number | null;
+  scoreInternship?: number | null;
+  scoreCertifications?: number | null;
+  scoreProjects?: number | null;
+  scoreFullstack?: number | null;
+  scoreHackathons?: number | null;
+  scoreInhouse?: number | null;
+  scoreMembership?: number | null;
+  scoreShl?: number | null;
+  totalScore?: number | null;
+  scores?: {
+    github?: number;
+    coding?: number;
+    internship?: number;
+    certifications?: number;
+    projects?: number;
+    fullstack?: number;
+    hackathons?: number;
+    inhouse?: number;
+    membership?: number;
+    shl?: number;
+    total?: number;
+  };
+}
 
-  // Retrieve all student candidates in the database, ordered by registration number
-  // Exclude pure coordinator accounts (registerNumber starting with COORD-).
-  const students = await prisma.student.findMany({
-    where: {
-      NOT: {
-        registerNumber: { startsWith: "COORD-" },
-      },
-    },
-    orderBy: [{ registerNumber: "asc" }],
-  });
-
+function buildPlacementMatrixXlsx(students: ExportableCandidate[]): Buffer {
   const headers = [
     "Registration Number",
     "Full Name (AS PER ATTENDANCE)",
@@ -132,22 +127,23 @@ export async function GET() {
               : 1.0
       : 0;
 
-    // Component scores
-    const ghScore = Number(s.scoreGithub ?? 0);
-    const codingScore = Number(s.scoreCoding ?? 0);
-    const internScore = Number(s.scoreInternship ?? 0);
-    const certScore = Number(s.scoreCertifications ?? 0);
-    const projScore = Number(s.scoreProjects ?? 0);
-    const fsdScore = Number(s.scoreFullstack ?? 0);
-    const hackScore = Number(s.scoreHackathons ?? 0);
-    const inhouseScore = Math.min(5, Number(s.scoreInhouse ?? 0));
-    const memberScore = Number(s.scoreMembership ?? 0);
-    const shlScore = Number(s.scoreShl ?? 0);
+    // Component scores (supports both Prisma flat columns and DTO scores object)
+    const ghScore = Number(s.scores?.github ?? s.scoreGithub ?? 0);
+    const codingScore = Number(s.scores?.coding ?? s.scoreCoding ?? 0);
+    const internScore = Number(s.scores?.internship ?? s.scoreInternship ?? 0);
+    const certScore = Number(s.scores?.certifications ?? s.scoreCertifications ?? 0);
+    const projScore = Number(s.scores?.projects ?? s.scoreProjects ?? 0);
+    const fsdScore = Number(s.scores?.fullstack ?? s.scoreFullstack ?? 0);
+    const hackScore = Number(s.scores?.hackathons ?? s.scoreHackathons ?? 0);
+    const inhouseScore = Math.min(5, Number(s.scores?.inhouse ?? s.scoreInhouse ?? 0));
+    const memberScore = Number(s.scores?.membership ?? s.scoreMembership ?? 0);
+    const shlScore = Number(s.scores?.shl ?? s.scoreShl ?? 0);
 
     // Sum of scores
+    const rawTotal = Number(s.scores?.total ?? s.totalScore ?? 0);
     const computedTotal =
-      (s.totalScore && s.totalScore > 0)
-        ? s.totalScore
+      rawTotal > 0
+        ? rawTotal
         : Math.round(
             (tenthScore +
               twelfthScore +
@@ -166,10 +162,10 @@ export async function GET() {
           ) / 100;
 
     return [
-      { value: s.registerNumber, style: "center" },
-      { value: s.fullName, style: "default" },
-      { value: "AO1", style: "center" },
-      { value: "B.Tech - AIML", style: "center" },
+      { value: s.registerNumber || "", style: "center" },
+      { value: s.fullName || "", style: "default" },
+      { value: s.section || "AO1", style: "center" },
+      { value: s.specialization || "B.Tech - AIML", style: "center" },
       { value: s.facultyAdvisor || "Dr. Kaliraj G", style: "center" },
       tenthScore > 0 ? tenthScore : "",
       twelfthScore > 0 ? twelfthScore : "",
@@ -192,13 +188,15 @@ export async function GET() {
     ];
   });
 
-  const buffer = buildXlsx({
+  return buildXlsx({
     headers,
     rows,
     columnWidths,
     sheetName: "AO1 Placement Matrix",
   });
+}
 
+function createXlsxResponse(buffer: Buffer): NextResponse {
   const dateStr = new Date().toISOString().slice(0, 10);
   const filename = `SRM_Placement_Matrix_AO1_${dateStr}.xlsx`;
 
@@ -210,4 +208,71 @@ export async function GET() {
       "Cache-Control": "no-store, max-age=0",
     },
   });
+}
+
+/**
+ * GET /api/students/export
+ * Retrieves all student records from the database and returns the official 19-column Excel workbook.
+ */
+export async function GET() {
+  const { error } = await requireEvaluator();
+  if (error) return error;
+
+  try {
+    const students = await prisma.student.findMany({
+      where: {
+        NOT: {
+          registerNumber: { startsWith: "COORD-" },
+        },
+      },
+      orderBy: [{ registerNumber: "asc" }],
+    });
+
+    const buffer = buildPlacementMatrixXlsx(students);
+    return createXlsxResponse(buffer);
+  } catch (err) {
+    console.error("GET /api/students/export failed:", err);
+    return NextResponse.json(
+      { error: "Database query failed while exporting. Please try again or export from active table." },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * POST /api/students/export
+ * Accepts an array of students from the client in memory, generating the official 19-column
+ * Excel workbook immediately without an extra database query. This ensures export always succeeds
+ * even if the database is under heavy connection load.
+ */
+export async function POST(req: Request) {
+  const { error } = await requireEvaluator();
+  if (error) return error;
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    let students: ExportableCandidate[] | null = Array.isArray(body?.students)
+      ? body.students
+      : null;
+
+    if (!students || students.length === 0) {
+      students = await prisma.student.findMany({
+        where: {
+          NOT: {
+            registerNumber: { startsWith: "COORD-" },
+          },
+        },
+        orderBy: [{ registerNumber: "asc" }],
+      });
+    }
+
+    const buffer = buildPlacementMatrixXlsx(students);
+    return createXlsxResponse(buffer);
+  } catch (err) {
+    console.error("POST /api/students/export failed:", err);
+    return NextResponse.json(
+      { error: "Failed to generate Excel file" },
+      { status: 500 }
+    );
+  }
 }
