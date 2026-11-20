@@ -11,44 +11,52 @@ export const dynamic = "force-dynamic";
  * (students may view their own submission only — never other students').
  */
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: "Sign in required" }, { status: 401 });
-  }
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
 
-  const isEvaluator = user.canViewSubmissions;
-  const isSelf = user.id === params.id;
-  if (!isEvaluator && !isSelf) {
+    const isEvaluator = user.canViewSubmissions;
+    const isSelf = user.id === params.id;
+    if (!isEvaluator && !isSelf) {
+      return NextResponse.json(
+        { error: "You can only view your own submission" },
+        { status: 403 }
+      );
+    }
+
+    const student = await prisma.student.findUnique({
+      where: { id: params.id },
+      include: { scrapes: true, documents: true, projectLinks: true },
+    });
+    if (!student) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+    // Students viewing their own submission are unrestricted on THEIR data,
+    // but the reviewer/verifier identity and the score-entry audit are
+    // evaluator-only — never leaked back to the student, not even their own.
+    const dto = toDto(student);
+    const redacted = isEvaluator
+      ? dto
+      : {
+          ...dto,
+          verifiedByName: null,
+          verifiedAt: null,
+          scoreAudit: [],
+          documents: dto.documents.map((d) => ({ ...d, reviewedByName: null })),
+          projectLinks: dto.projectLinks.map((l) => ({ ...l, reviewedByName: null })),
+        };
+    return NextResponse.json({
+      student: isSelf ? redacted : filterStudentDtoForUser(dto, user),
+    });
+  } catch (err) {
+    console.error("GET /api/students/[id] error:", err);
     return NextResponse.json(
-      { error: "You can only view your own submission" },
-      { status: 403 }
+      { error: (err as Error)?.message || "Failed to retrieve student record" },
+      { status: 500 }
     );
   }
-
-  const student = await prisma.student.findUnique({
-    where: { id: params.id },
-    include: { scrapes: true, documents: true, projectLinks: true },
-  });
-  if (!student) {
-    return NextResponse.json({ error: "Student not found" }, { status: 404 });
-  }
-  // Students viewing their own submission are unrestricted on THEIR data,
-  // but the reviewer/verifier identity and the score-entry audit are
-  // evaluator-only — never leaked back to the student, not even their own.
-  const dto = toDto(student);
-  const redacted = isEvaluator
-    ? dto
-    : {
-        ...dto,
-        verifiedByName: null,
-        verifiedAt: null,
-        scoreAudit: [],
-        documents: dto.documents.map((d) => ({ ...d, reviewedByName: null })),
-        projectLinks: dto.projectLinks.map((l) => ({ ...l, reviewedByName: null })),
-      };
-  return NextResponse.json({
-    student: isSelf ? redacted : filterStudentDtoForUser(dto, user),
-  });
 }
 
 /**

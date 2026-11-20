@@ -252,8 +252,22 @@ export function StudentDetailModal({
     async function load() {
       try {
         const res = await fetch(`/api/students/${studentId}`, { cache: "no-store" });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body?.error ?? "Failed to load student");
+        const text = await res.text();
+        let body: { student?: StudentDto; error?: string } | null = null;
+        try {
+          body = text ? JSON.parse(text) : null;
+        } catch {
+          // not JSON
+        }
+        if (!res.ok) {
+          if (res.status === 401) {
+            throw new Error("Session expired. Please refresh the page and sign in again.");
+          }
+          throw new Error(body?.error ?? `Server returned error (${res.status})`);
+        }
+        if (!body?.student) {
+          throw new Error("Student record could not be loaded from server.");
+        }
         if (!alive) return;
         setStudent(body.student);
         setScores(scoresOf(body.student));
@@ -449,8 +463,22 @@ export function StudentDetailModal({
           ...(verify === undefined ? {} : { verify }),
         }),
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error ?? "Failed to save scores");
+      const text = await res.text();
+      let body: { student?: StudentDto; error?: string } | null = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        // not JSON
+      }
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Session expired. Please sign in again.");
+        }
+        throw new Error(body?.error ?? `Failed to save scores (server status ${res.status})`);
+      }
+      if (!body?.student) {
+        throw new Error("Server returned an invalid response after saving.");
+      }
       setStudent(body.student);
       // Adopt the server-confirmed values (clamped caps, auto recalcs) and
       // clear the dirty set so a second Save can't re-send stale edits.
