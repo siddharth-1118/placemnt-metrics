@@ -12,7 +12,6 @@ import {
   filterStudentDtoForUser,
 } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
-import { capturePortalArchive } from "@/lib/auto-archive";
 import type { StudentDto } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -58,13 +57,15 @@ const submitSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters").max(100).optional(),
 });
 
-/** GET /api/students — evaluator-only leaderboard (ranked, all students) */
+/** GET /api/students — evaluator-only leaderboard (ranked, all students, lightweight & fast) */
 export async function GET() {
   const { user, error } = await requireEvaluator();
   if (error) return error;
 
   // Return all registered student candidates from the database.
   // Pure faculty coordinator accounts (registerNumber starting with COORD-) are excluded from candidate ranking.
+  // Note: scrapes is intentionally excluded from the list endpoint to avoid transferring megabytes of
+  // raw GraphQL dataJson blobs. The modal fetches full scrape history individually via GET /api/students/[id].
   const students = await prisma.student.findMany({
     where: {
       NOT: {
@@ -72,11 +73,47 @@ export async function GET() {
       },
     },
     orderBy: [{ totalScore: "desc" }, { registerNumber: "asc" }],
-    include: { scrapes: true, documents: true, projectLinks: true },
+    include: {
+      documents: {
+        select: {
+          id: true,
+          category: true,
+          fileName: true,
+          mimeType: true,
+          sizeBytes: true,
+          note: true,
+          status: true,
+          reviewedAt: true,
+          reviewNote: true,
+          reviewedByName: true,
+          createdAt: true,
+        },
+      },
+      projectLinks: {
+        select: {
+          id: true,
+          category: true,
+          label: true,
+          url: true,
+          status: true,
+          reviewedAt: true,
+          reviewNote: true,
+          reviewedByName: true,
+          createdAt: true,
+        },
+      },
+    },
   });
   // Scoped coordinators receive only the evidence inside their sections;
   // super admin and unrestricted coordinators get everything.
-  return NextResponse.json({ students: students.map((s) => filterStudentDtoForUser(toDto(s), user)) });
+  return NextResponse.json(
+    { students: students.map((s) => filterStudentDtoForUser(toDto(s), user)) },
+    {
+      headers: {
+        "Cache-Control": "private, no-cache, stale-while-revalidate=5",
+      },
+    }
+  );
 }
 
 /** POST /api/students — student submission; creates or updates, then triggers scrapes */
@@ -278,12 +315,6 @@ export async function POST(req: Request) {
     where: { id: student.id },
     include: { scrapes: true, documents: true, projectLinks: true },
   });
-
-  // Preserve an isolated snapshot in separate archive storage
-  capturePortalArchive(
-    "STUDENT_UPDATE",
-    `Student submission: ${student.fullName} (${student.registerNumber})`
-  ).catch(console.error);
 
     return NextResponse.json(
       { student: toDto(fresh ?? student), message: "Submission received — coding profiles scraped." },

@@ -64,11 +64,14 @@ export function Dashboard({
   /** Super admin — may view every section regardless of scopes. */
   isSuperAdmin = false,
   permissionScopes = [],
+  initialStudents,
 }: {
   canScore?: boolean;
   isSuperAdmin?: boolean;
   /** Rubric sections this coordinator may view & score; empty = all. */
   permissionScopes?: ScoreScope[];
+  /** Optional pre-fetched students from server component for instant 0-second page load. */
+  initialStudents?: StudentDto[];
 }) {
   // The columns this viewer may see; the server already strips the data for
   // out-of-scope fields, so this is purely visual (no empty columns).
@@ -77,8 +80,8 @@ export function Dashboard({
   const canSeeGithub = has("GITHUB");
   const canSeeCoding = has("CODING");
   const colCount = 6 + (canSeeAcademic ? 3 : 0) + (canSeeGithub ? 1 : 0) + (canSeeCoding ? 1 : 0);
-  const [students, setStudents] = useState<StudentDto[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [students, setStudents] = useState<StudentDto[]>(initialStudents ?? []);
+  const [loading, setLoading] = useState(initialStudents && initialStudents.length > 0 ? false : true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
@@ -119,8 +122,11 @@ export function Dashboard({
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    // Only fetch client-side if no initial students were provided by SSR
+    if (!initialStudents || initialStudents.length === 0) {
+      load();
+    }
+  }, [load, initialStudents]);
 
   async function recalculate() {
     setRecalcBusy(true);

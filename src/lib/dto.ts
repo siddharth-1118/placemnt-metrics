@@ -143,7 +143,7 @@ export function toDto(
   rank: number | null;
   createdAt: Date;
   updatedAt: Date;
-  scrapes: {
+  scrapes?: {
     platform: string;
     status: string;
     mode: string | null;
@@ -212,7 +212,7 @@ export function toDto(
     rank: s.rank,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
-    scrapes: s.scrapes.map((sc) => {
+    scrapes: (s.scrapes ?? []).map((sc) => {
       let data: StudentDto["scrapes"][number]["data"] = null;
       if (sc.dataJson) {
         try {
