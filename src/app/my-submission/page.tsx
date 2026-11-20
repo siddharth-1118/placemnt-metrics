@@ -15,6 +15,9 @@ import { Button, Badge } from "@/components/ui";
 import { CheckCircle2, Clock, LayoutDashboard } from "lucide-react";
 import { SCORE_CAPS } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export const metadata: Metadata = {
   title: "Student Dashboard · Placement Matrix Portal",
 };

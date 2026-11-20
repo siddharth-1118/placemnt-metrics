@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, Clock, Code2, ExternalLink, Github, GraduationCap, Mail, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X, Loader2,
+  AlertTriangle, CheckCircle2, Clock, Code2, ExternalLink, Github, GraduationCap, Mail, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X, Loader2, Pencil,
 } from "lucide-react";
 import { Button, Input, Label, Badge, Card, CardContent } from "@/components/ui";
 import { GithubCard } from "@/components/dashboard/github-card";
@@ -251,6 +251,12 @@ export function StudentDetailModal({
     sgpaSem1: "",
     sgpaSem2: "",
   });
+  const [editingLinks, setEditingLinks] = useState(false);
+  const [linksForm, setLinksForm] = useState({
+    githubUrl: "",
+    leetcodeUrl: "",
+  });
+  const [savingLinks, setSavingLinks] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rescraping, setRescraping] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -291,6 +297,11 @@ export function StudentDetailModal({
         });
         setAcademicDirty(false);
         setEditingAcademic(false);
+        setLinksForm({
+          githubUrl: body.student.githubUrl ?? "",
+          leetcodeUrl: body.student.leetcodeUrl ?? "",
+        });
+        setEditingLinks(false);
       } catch (e) {
         if (alive) setError((e as Error).message);
       } finally {
@@ -528,6 +539,41 @@ export function StudentDetailModal({
       setError((e as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveLinks() {
+    if (!student) return;
+    setSavingLinks(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/students/${student.id}/score`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileLinks: {
+            githubUrl: linksForm.githubUrl.trim(),
+            leetcodeUrl: linksForm.leetcodeUrl.trim(),
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to update profile links");
+      if (data.student) {
+        setStudent(data.student);
+        setLinksForm({
+          githubUrl: data.student.githubUrl ?? "",
+          leetcodeUrl: data.student.leetcodeUrl ?? "",
+        });
+        setEditingLinks(false);
+        setSavedFlash(true);
+        setTimeout(() => setSavedFlash(false), 2000);
+        onChanged();
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSavingLinks(false);
     }
   }
 
@@ -803,24 +849,92 @@ export function StudentDetailModal({
                   )}
                   {/* Profile links */}
                   <div className="space-y-1.5 text-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Profiles</p>
-                    {canViewSection("GITHUB") &&
-                      (student.githubUrl ? (
-                        <a href={student.githubUrl} target="_blank" rel="noreferrer noopener" className="flex items-center gap-2 text-primary hover:underline">
-                          <Github className="h-3.5 w-3.5" /> GitHub profile <ExternalLink className="h-3 w-3 opacity-60" />
-                        </a>
-                      ) : (
-                        <p className="text-muted-foreground">GitHub — not provided</p>
-                      ))}
-                    {canViewSection("CODING") &&
-                      (student.leetcodeUrl ? (
-                        <a href={student.leetcodeUrl} target="_blank" rel="noreferrer noopener" className="flex items-center gap-2 text-primary hover:underline">
-                          <Code2 className="h-3.5 w-3.5" /> LeetCode profile <ExternalLink className="h-3 w-3 opacity-60" />
-                        </a>
-                      ) : (
-                        <p className="text-muted-foreground">LeetCode — not provided</p>
-                      ))}
-                    <p className="text-xs text-muted-foreground">Submitted {timeAgo(student.createdAt)}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Profiles</p>
+                      {canScore && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLinksForm({
+                              githubUrl: student.githubUrl ?? "",
+                              leetcodeUrl: student.leetcodeUrl ?? "",
+                            });
+                            setEditingLinks(!editingLinks);
+                          }}
+                          className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          <span>{editingLinks ? "Cancel" : "Edit Links"}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {editingLinks ? (
+                      <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                            GitHub Profile (URL or username)
+                          </label>
+                          <Input
+                            value={linksForm.githubUrl}
+                            onChange={(e) => setLinksForm((f) => ({ ...f, githubUrl: e.target.value }))}
+                            placeholder="https://github.com/username or username"
+                            className="h-8 text-xs mt-0.5"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                            LeetCode Profile (URL or username)
+                          </label>
+                          <Input
+                            value={linksForm.leetcodeUrl}
+                            onChange={(e) => setLinksForm((f) => ({ ...f, leetcodeUrl: e.target.value }))}
+                            placeholder="https://leetcode.com/u/username or username"
+                            className="h-8 text-xs mt-0.5"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            onClick={handleSaveLinks}
+                            disabled={savingLinks}
+                            className="h-7 text-xs bg-[#165b33] text-white hover:bg-[#124929]"
+                          >
+                            {savingLinks ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
+                            <span>Save &amp; Re-scrape</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingLinks(false)}
+                            disabled={savingLinks}
+                            className="h-7 text-xs"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {canViewSection("GITHUB") &&
+                          (student.githubUrl ? (
+                            <a href={student.githubUrl} target="_blank" rel="noreferrer noopener" className="flex items-center gap-2 text-primary hover:underline">
+                              <Github className="h-3.5 w-3.5" /> GitHub profile <ExternalLink className="h-3 w-3 opacity-60" />
+                            </a>
+                          ) : (
+                            <p className="text-muted-foreground">GitHub — not provided</p>
+                          ))}
+                        {canViewSection("CODING") &&
+                          (student.leetcodeUrl ? (
+                            <a href={student.leetcodeUrl} target="_blank" rel="noreferrer noopener" className="flex items-center gap-2 text-primary hover:underline">
+                              <Code2 className="h-3.5 w-3.5" /> LeetCode profile <ExternalLink className="h-3 w-3 opacity-60" />
+                            </a>
+                          ) : (
+                            <p className="text-muted-foreground">LeetCode — not provided</p>
+                          ))}
+                        <p className="text-xs text-muted-foreground">Submitted {timeAgo(student.createdAt)}</p>
+                      </>
+                    )}
                   </div>
                 </div>
               </section>

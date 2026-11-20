@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { enqueueScrapes } from "@/lib/pipeline";
 import { clampScores, suggestAcademicScore } from "@/lib/score";
-import { parseGithubLogin, parseLeetcodeUser } from "@/lib/utils";
+import { parseGithubLogin, parseLeetcodeUser, normalizeGithubUrl, normalizeLeetcodeUrl } from "@/lib/utils";
 import { toDto } from "@/lib/dto";
 import {
   requireEvaluator,
@@ -167,8 +167,8 @@ export async function POST(req: Request) {
     sgpaSem1: d.sgpaSem1,
     sgpaSem2: d.sgpaSem2,
     cgpa,
-    githubUrl: d.githubUrl || null,
-    leetcodeUrl: d.leetcodeUrl || null,
+    githubUrl: normalizeGithubUrl(d.githubUrl),
+    leetcodeUrl: normalizeLeetcodeUrl(d.leetcodeUrl),
     proofUrls: JSON.stringify(proofUrls),
   };
 

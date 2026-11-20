@@ -122,10 +122,12 @@ export function Dashboard({
   }, []);
 
   useEffect(() => {
-    // Only fetch client-side if no initial students were provided by SSR
-    if (!initialStudents || initialStudents.length === 0) {
-      load();
+    if (initialStudents && initialStudents.length > 0) {
+      setStudents(initialStudents);
+      setLoading(false);
     }
+    // Also fetch fresh in background so updates immediately reflect
+    load();
   }, [load, initialStudents]);
 
   async function recalculate() {

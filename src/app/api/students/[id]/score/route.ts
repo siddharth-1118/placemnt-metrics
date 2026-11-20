@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { clampScores, assignRanks, autoScoresFor, suggestAcademicScore } from "@/lib/score";
+import { clampScores, assignRanks, autoScoresFor, suggestAcademicScore, applyAutoPlatformScores } from "@/lib/score";
 import { toDto, parseScoreAudit } from "@/lib/dto";
 import { requireScorer, getSessionUser, canWriteScoreField, hasScope } from "@/lib/auth";
 import { scopesAreFull, docCategoryScope, linkCategoryScope } from "@/lib/scopes";
 import { SCORE_CAPS, type ScoreAuditEntry } from "@/lib/types";
-import { capturePortalArchive } from "@/lib/auto-archive";
+import { normalizeGithubUrl, normalizeLeetcodeUrl } from "@/lib/utils";
+import { enqueueScrapes } from "@/lib/pipeline";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,12 @@ const scoreSchema = z.object({
       twelfthPercent: z.coerce.number().min(0, "Must be ≥ 0").max(100, "Must be ≤ 100").optional(),
       sgpaSem1: z.coerce.number().min(0, "Must be ≥ 0").max(10, "Must be ≤ 10").optional(),
       sgpaSem2: z.coerce.number().min(0, "Must be ≥ 0").max(10, "Must be ≤ 10").optional(),
+    })
+    .optional(),
+  profileLinks: z
+    .object({
+      githubUrl: z.string().trim().optional().or(z.literal("")),
+      leetcodeUrl: z.string().trim().optional().or(z.literal("")),
     })
     .optional(),
   verify: z.boolean().optional(),
@@ -283,6 +290,44 @@ export async function PATCH(
     });
   }
 
+  // Profile link updates (GitHub URL & LeetCode URL)
+  const incomingLinks = parsed.data.profileLinks;
+  let newGithubUrl = student.githubUrl;
+  let newLeetcodeUrl = student.leetcodeUrl;
+  let profileLinksChanged = false;
+
+  if (incomingLinks) {
+    if (incomingLinks.githubUrl !== undefined) {
+      const normalizedGh = normalizeGithubUrl(incomingLinks.githubUrl);
+      if (normalizedGh !== student.githubUrl) {
+        newGithubUrl = normalizedGh;
+        profileLinksChanged = true;
+        newEntries.push({
+          field: "github",
+          value: clamped.github,
+          action: "override",
+          byName: user.fullName,
+          at: now.toISOString(),
+        });
+      }
+    }
+
+    if (incomingLinks.leetcodeUrl !== undefined) {
+      const normalizedLc = normalizeLeetcodeUrl(incomingLinks.leetcodeUrl);
+      if (normalizedLc !== student.leetcodeUrl) {
+        newLeetcodeUrl = normalizedLc;
+        profileLinksChanged = true;
+        newEntries.push({
+          field: "coding",
+          value: clamped.coding,
+          action: "override",
+          byName: user.fullName,
+          at: now.toISOString(),
+        });
+      }
+    }
+  }
+
   const scoreAudit = JSON.stringify(
     [...newEntries, ...parseScoreAudit(student.scoreAudit)].slice(0, 200)
   );
@@ -290,6 +335,8 @@ export async function PATCH(
   const updated = await prisma.student.update({
     where: { id: student.id },
     data: {
+      githubUrl: newGithubUrl,
+      leetcodeUrl: newLeetcodeUrl,
       tenthPercent: newTenth,
       twelfthPercent: newTwelfth,
       sgpaSem1: newSgpa1,
@@ -323,6 +370,16 @@ export async function PATCH(
     },
   });
 
+  // If profile links changed, re-run scrape jobs and auto-scoring
+  if (profileLinksChanged) {
+    try {
+      await enqueueScrapes(student.id, newGithubUrl, newLeetcodeUrl);
+      await applyAutoPlatformScores(student.id);
+    } catch (e) {
+      console.warn("Failed to auto-rescrape after profile link update:", e);
+    }
+  }
+
   // Ranks depend on total score → refresh globally (cheap at batch scale).
   await assignRanks();
 
@@ -330,11 +387,6 @@ export async function PATCH(
     where: { id: student.id },
     include: { scrapes: true, documents: true, projectLinks: true },
   });
-
-  capturePortalArchive(
-    "COORDINATOR_UPDATE",
-    `Score evaluation updated for ${fresh.fullName} (${fresh.registerNumber}) by ${user.fullName}`
-  ).catch(console.error);
 
   return NextResponse.json({ student: toDto(fresh), caps: SCORE_CAPS });
 }

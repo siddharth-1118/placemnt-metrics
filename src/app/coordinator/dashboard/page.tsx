@@ -12,6 +12,9 @@ import { DatabaseBackupPanel } from "@/components/dashboard/backup-panel";
 import { PortalArchivesPanel } from "@/components/dashboard/archives-panel";
 import { GraduationCap, ShieldCheck, ChevronDown } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export const metadata: Metadata = {
   title: "Evaluation Dashboard · SRM Placement Committee",
   description: "Official evaluation and scoring matrix for School of Computing faculty placement coordinators.",

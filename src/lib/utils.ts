@@ -19,16 +19,39 @@ export function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** Extract a GitHub login from a profile URL (accepts bare logins too). */
-export function parseGithubLogin(url: string): string | null {
-  const m = url.trim().match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38})\/?$/i);
-  return m ? m[1] : null;
+/** Extract a clean GitHub login from a profile URL, bare username, or handle with query params. */
+export function parseGithubLogin(input: string): string | null {
+  if (!input) return null;
+  const raw = input.trim().replace(/^@/, "");
+  // If it's a URL or contains github.com (handles ?tab=..., trailing slash, etc.)
+  const urlMatch = raw.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38})(?:[/?#]|$)/i);
+  if (urlMatch) return urlMatch[1];
+  // If it's a bare username
+  const bareMatch = raw.match(/^([A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38})$/);
+  return bareMatch ? bareMatch[1] : null;
 }
 
-/** Extract a LeetCode username from a profile URL (accepts bare handles too). */
-export function parseLeetcodeUser(url: string): string | null {
-  const m = url.trim().match(/^(?:https?:\/\/)?(?:www\.)?leetcode\.com\/(?:u\/)?([A-Za-z0-9_-]{1,39})\/?$/i);
-  return m ? m[1] : null;
+/** Extract a clean LeetCode username from a profile URL, bare username, or handle. */
+export function parseLeetcodeUser(input: string): string | null {
+  if (!input) return null;
+  const raw = input.trim().replace(/^@/, "");
+  // If it's a URL or contains leetcode.com
+  const urlMatch = raw.match(/(?:https?:\/\/)?(?:www\.)?leetcode\.com\/(?:u\/)?([A-Za-z0-9_-]{1,39})(?:[/?#]|$)/i);
+  if (urlMatch) return urlMatch[1];
+  // If it's a bare username
+  const bareMatch = raw.match(/^([A-Za-z0-9_-]{1,39})$/);
+  return bareMatch ? bareMatch[1] : null;
+}
+
+/** Normalize to standard canonical URL */
+export function normalizeGithubUrl(input: string | null | undefined): string | null {
+  const login = input ? parseGithubLogin(input) : null;
+  return login ? `https://github.com/${login}` : null;
+}
+
+export function normalizeLeetcodeUrl(input: string | null | undefined): string | null {
+  const user = input ? parseLeetcodeUser(input) : null;
+  return user ? `https://leetcode.com/u/${user}` : null;
 }
 
 export function fmtNumber(n: number | null | undefined): string {
