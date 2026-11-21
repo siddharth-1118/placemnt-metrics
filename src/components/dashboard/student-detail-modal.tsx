@@ -102,7 +102,7 @@ const RUBRIC_BREAKDOWN_CONFIG: RubricBreakdownItem[] = [
   },
   {
     fieldKey: "inhouse",
-    label: "9. In-House / Laboratory Projects",
+    label: "9. In-House / Laboratory Projects (Report Document & Link)",
     cap: SCORE_CAPS.inhouse,
     docCategories: ["INHOUSE_PROJECT"],
     linkCategories: ["INHOUSE_PROJECT_LINK"],

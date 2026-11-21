@@ -184,6 +184,12 @@ export function LinkManager({ onChanged, locked = false }: { onChanged?: () => v
           </Button>
         </div>
 
+        {category === "INHOUSE_PROJECT_LINK" && (
+          <div className="rounded border border-cyan-500/30 bg-cyan-500/10 p-2 text-xs text-cyan-800 dark:text-cyan-300">
+            <strong>📌 In-House Project Requirement:</strong> You must also upload your official project report, certificate, or faculty sign-off under <strong>Document Proofs</strong> above along with this project link.
+          </div>
+        )}
+
         {/* Links list */}
         {links.length === 0 ? (
           <p className="py-4 text-center text-xs text-[#5c6470] dark:text-[#94a3b8]">

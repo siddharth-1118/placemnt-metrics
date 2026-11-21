@@ -279,6 +279,12 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
                   </span>
                 </div>
 
+                {cat.key === "INHOUSE_PROJECT" && (
+                  <div className="rounded border border-cyan-500/30 bg-cyan-500/10 p-2 text-[11px] text-cyan-800 dark:text-cyan-300">
+                    <strong>📄 Mandatory Documentation:</strong> Upload your official UROP/SERI project report, completion certificate or faculty approval document here alongside any deployed project links.
+                  </div>
+                )}
+
                 {mine.length > 0 && (
                   <ul className="space-y-1.5">
                     {mine.map((d) => (

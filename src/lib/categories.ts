@@ -38,7 +38,7 @@ export const DOC_CATEGORIES: CategoryDef[] = [
   { key: "INTERNSHIP", label: "Internship Proof", hint: "Offer letter, completion certificate or experience letter" },
   { key: "SKILL_CERT", label: "Skills & Global Certifications", hint: "Course certificates (AWS, Coursera, NPTEL, Udemy…) — upload one per certificate" },
   { key: "COMPETITION", label: "Competitions & Hackathons", hint: "Winner/participation certificates or event photos" },
-  { key: "INHOUSE_PROJECT", label: "In-house Project (document)", hint: "Report, certificate or screenshots — if you have a deployed link, add it under links instead" },
+  { key: "INHOUSE_PROJECT", label: "In-house Project (UROP / SERI Document & Report)", hint: "Official project report, certificate, approval letter or faculty sign-off document (upload here alongside any live links)" },
   { key: "MEMBERSHIP", label: "Professional Membership", hint: "IEEE / ACM / CSI / GDSC membership card or receipt (deployed link allowed as alternative)" },
   { key: "SHL", label: "SHL Talent Discovery Program", hint: "SHL assessment result / participation document" },
 ];
@@ -46,7 +46,7 @@ export const DOC_CATEGORIES: CategoryDef[] = [
 export const LINK_CATEGORIES: CategoryDef[] = [
   { key: "PROJECT", label: "Project Link", hint: "GitHub repo, live demo or case study — add as many as you want" },
   { key: "FULLSTACK_PROJECT", label: "Full-stack Project Link", hint: "Deployed full-stack apps (frontend + backend + DB)" },
-  { key: "INHOUSE_PROJECT_LINK", label: "In-house Project Link", hint: "Deployed in-house / campus project (alternative to uploading a document)" },
+  { key: "INHOUSE_PROJECT_LINK", label: "In-house Project Link", hint: "Deployed in-house / campus project link (you must also upload the project document/report above)" },
 ];
 
 export const DOC_CATEGORY_KEYS = DOC_CATEGORIES.map((c) => c.key);
@@ -163,7 +163,7 @@ export function sniffUploadMime(bytes: Uint8Array): UploadMime | null {
 }
 
 /** Categories that ALSO accept a deployed link instead of a document. */
-export const LINK_OK_FOR_DOC = new Set<string>(["INHOUSE_PROJECT", "MEMBERSHIP"]);
+export const LINK_OK_FOR_DOC = new Set<string>(["MEMBERSHIP"]);
 
 export interface DocumentItemSummary {
   category: string;
