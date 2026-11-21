@@ -165,6 +165,68 @@ export function Dashboard({
   function downloadCsvFallback(list: StudentDto[], filename: string) {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
 
+    function makeCsvDocLink(d: { id?: string; fileUrl?: string; fileName?: string }, token?: string | null): string {
+      const path = d.fileUrl || (d.id ? `/api/documents/${d.id}/file` : "");
+      if (!path) return "";
+      const tokenQuery = token ? `token=${encodeURIComponent(token)}` : "";
+      const fullPath = tokenQuery ? (path.includes("?") ? `${path}&${tokenQuery}` : `${path}?${tokenQuery}`) : path;
+      return origin ? `${origin}${fullPath}` : fullPath;
+    }
+
+    function escapeCsv(val: any): string {
+      if (val === null || val === undefined || val === "") return '""';
+      const str = String(val);
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+
+    function getItemText(label: string | null | undefined, url: string, note?: string | null): string {
+      const parts: string[] = [];
+      if (label && label.trim()) parts.push(label.trim());
+      if (note && note.trim()) parts.push(`(${note.trim()})`);
+      const prefix = parts.length > 0 ? `${parts.join(" ")}: ` : "";
+      return `${prefix}${url}`;
+    }
+
+    // Determine max counts dynamically
+    let maxProjects = 3;
+    let maxFullstack = 2;
+    let maxInhouseLinks = 2;
+    let maxInhouseDocs = 2;
+    let maxInternships = 2;
+    let maxCerts = 6;
+    let maxHackathons = 4;
+    let maxMemberships = 2;
+    let maxShl = 1;
+
+    for (const s of list) {
+      const pLinks = (s.projectLinks || []).filter((l) => l.category === "PROJECT" || !l.category);
+      maxProjects = Math.max(maxProjects, pLinks.length + (s.proofUrls?.length || 0));
+
+      const fsLinks = (s.projectLinks || []).filter((l) => l.category === "FULLSTACK_PROJECT");
+      maxFullstack = Math.max(maxFullstack, fsLinks.length);
+
+      const ihLinks = (s.projectLinks || []).filter((l) => l.category === "INHOUSE_PROJECT_LINK");
+      maxInhouseLinks = Math.max(maxInhouseLinks, ihLinks.length);
+
+      const ihDocs = (s.documents || []).filter((d) => d.category === "INHOUSE_PROJECT");
+      maxInhouseDocs = Math.max(maxInhouseDocs, ihDocs.length);
+
+      const internDocs = (s.documents || []).filter((d) => d.category === "INTERNSHIP");
+      maxInternships = Math.max(maxInternships, internDocs.length);
+
+      const certDocs = (s.documents || []).filter((d) => d.category === "SKILL_CERT");
+      maxCerts = Math.max(maxCerts, certDocs.length);
+
+      const hackDocs = (s.documents || []).filter((d) => d.category === "COMPETITION");
+      maxHackathons = Math.max(maxHackathons, hackDocs.length);
+
+      const memDocs = (s.documents || []).filter((d) => d.category === "MEMBERSHIP");
+      maxMemberships = Math.max(maxMemberships, memDocs.length);
+
+      const shlDocs = (s.documents || []).filter((d) => d.category === "SHL");
+      maxShl = Math.max(maxShl, shlDocs.length);
+    }
+
     const headers = [
       "Registration Number",
       "Full Name (AS PER ATTENDANCE)",
@@ -187,32 +249,24 @@ export function Dashboard({
       "Total",
       "GitHub Profile Link",
       "Coding Profile Link (LeetCode)",
-      "Projects Links (Repo & Demo)",
-      "Full Stack Project Links",
-      "In-House Project Links",
-      "Internship Proof Documents",
-      "Skillset & Certifications Proofs",
-      "Hackathons & Competitions Proofs",
-      "In-House Project Proofs",
-      "Membership Proofs",
-      "SHL Assessment Proofs",
-      "Academic Marksheets (10th / 12th / CGPA)",
-      "All Uploaded Documents & Links (Consolidated)",
     ];
 
-    function makeCsvDocLink(d: { id?: string; fileUrl?: string; fileName?: string }, token?: string | null): string {
-      const path = d.fileUrl || (d.id ? `/api/documents/${d.id}/file` : "");
-      if (!path) return "";
-      const tokenQuery = token ? `token=${encodeURIComponent(token)}` : "";
-      const fullPath = tokenQuery ? (path.includes("?") ? `${path}&${tokenQuery}` : `${path}?${tokenQuery}`) : path;
-      return origin ? `${origin}${fullPath}` : fullPath;
-    }
-
-    function escapeCsv(val: any): string {
-      if (val === null || val === undefined) return '""';
-      const str = String(val);
-      return `"${str.replace(/"/g, '""')}"`;
-    }
+    for (let i = 1; i <= maxProjects; i++) headers.push(`Projects Done - Link ${i}`);
+    for (let i = 1; i <= maxFullstack; i++) headers.push(`Full Stack Developer - Link ${i}`);
+    for (let i = 1; i <= maxInhouseLinks; i++) headers.push(`Inhouse Projects - Link ${i}`);
+    for (let i = 1; i <= maxInhouseDocs; i++) headers.push(`Inhouse Projects - Document ${i}`);
+    for (let i = 1; i <= maxInternships; i++) headers.push(`Internship Experience - Document ${i}`);
+    for (let i = 1; i <= maxCerts; i++) headers.push(`Skillset & Certifications - Document ${i}`);
+    for (let i = 1; i <= maxHackathons; i++) headers.push(`Coding Competitions & Hackathons - Document ${i}`);
+    for (let i = 1; i <= maxMemberships; i++) headers.push(`Professional Membership - Document ${i}`);
+    for (let i = 1; i <= maxShl; i++) headers.push(`SHL Assessment - Document ${i}`);
+    headers.push(
+      "Academic - 10th Marksheet Document",
+      "Academic - 12th Marksheet Document",
+      "Academic - Degree CGPA Marksheet Document",
+      "Academic - Semester 1 Marksheet Document",
+      "Academic - Semester 2 Marksheet Document"
+    );
 
     const rows = list.map((s) => {
       const tenthScore = s.tenthPercent
@@ -242,65 +296,7 @@ export function Dashboard({
         ? s.scores.total
         : (tenthScore + twelfthScore + cgpaScore + ghScore + codingScore + internScore + certScore + projScore + fsdScore + hackScore + inhouseScore + memberScore + shlScore);
 
-      const projLinks = (s.projectLinks || [])
-        .filter((l) => l.category === "PROJECT" || !l.category)
-        .map((p) => `${p.label ? `${p.label}: ` : ""}${p.url}`);
-      for (const p of s.proofUrls || []) {
-        if (p?.url) projLinks.push(`${p.label ? `${p.label}: ` : ""}${p.url}`);
-      }
-
-      const fsdLinks = (s.projectLinks || [])
-        .filter((l) => l.category === "FULLSTACK_PROJECT")
-        .map((p) => `${p.label ? `${p.label}: ` : ""}${p.url}`);
-
-      const inhouseLinks = (s.projectLinks || [])
-        .filter((l) => l.category === "INHOUSE_PROJECT_LINK")
-        .map((p) => `${p.label ? `${p.label}: ` : ""}${p.url}`);
-
-      const internDocs = (s.documents || [])
-        .filter((d) => d.category === "INTERNSHIP")
-        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
-
-      const certDocs = (s.documents || [])
-        .filter((d) => d.category === "SKILL_CERT")
-        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
-
-      const hackDocs = (s.documents || [])
-        .filter((d) => d.category === "COMPETITION")
-        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
-
-      const inhouseDocs = (s.documents || [])
-        .filter((d) => d.category === "INHOUSE_PROJECT")
-        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
-
-      const memDocs = (s.documents || [])
-        .filter((d) => d.category === "MEMBERSHIP")
-        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
-
-      const shlDocs = (s.documents || [])
-        .filter((d) => d.category === "SHL")
-        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
-
-      const academicDocs = (s.documents || [])
-        .filter((d) =>
-          ["TENTH_MARKSHEET", "TWELFTH_MARKSHEET", "CGPA_MARKSHEET", "SEM1_MARKSHEET", "SEM2_MARKSHEET"].includes(d.category)
-        )
-        .map((d) => `${docCategoryLabel(d.category)} (${d.fileName}): ${makeCsvDocLink(d, s.uploadToken)}`);
-
-      const allItems: string[] = [];
-      if (s.githubUrl) allItems.push(`GitHub: ${s.githubUrl}`);
-      if (s.leetcodeUrl) allItems.push(`LeetCode: ${s.leetcodeUrl}`);
-      for (const p of s.projectLinks || []) {
-        if (p.url) allItems.push(`[${linkCategoryLabel(p.category || "")}] ${p.label ? `${p.label}: ` : ""}${p.url}`);
-      }
-      for (const p of s.proofUrls || []) {
-        if (p?.url) allItems.push(`[Project Link] ${p.label ? `${p.label}: ` : ""}${p.url}`);
-      }
-      for (const d of s.documents || []) {
-        allItems.push(`[${docCategoryLabel(d.category || "")}] ${d.fileName}: ${makeCsvDocLink(d, s.uploadToken)}`);
-      }
-
-      return [
+      const r: (string | number)[] = [
         escapeCsv(s.registerNumber),
         escapeCsv(s.fullName),
         escapeCsv("AO1"),
@@ -320,20 +316,93 @@ export function Dashboard({
         memberScore > 0 ? memberScore : 0,
         shlScore > 0 ? shlScore : 0,
         totalVal,
-        escapeCsv(s.githubUrl || "—"),
-        escapeCsv(s.leetcodeUrl || "—"),
-        escapeCsv(projLinks.length ? projLinks.join("\n") : "—"),
-        escapeCsv(fsdLinks.length ? fsdLinks.join("\n") : "—"),
-        escapeCsv(inhouseLinks.length ? inhouseLinks.join("\n") : "—"),
-        escapeCsv(internDocs.length ? internDocs.join("\n") : "—"),
-        escapeCsv(certDocs.length ? certDocs.join("\n") : "—"),
-        escapeCsv(hackDocs.length ? hackDocs.join("\n") : "—"),
-        escapeCsv(inhouseDocs.length ? inhouseDocs.join("\n") : "—"),
-        escapeCsv(memDocs.length ? memDocs.join("\n") : "—"),
-        escapeCsv(shlDocs.length ? shlDocs.join("\n") : "—"),
-        escapeCsv(academicDocs.length ? academicDocs.join("\n") : "—"),
-        escapeCsv(allItems.length ? allItems.join("\n") : "—"),
+        escapeCsv(s.githubUrl || ""),
+        escapeCsv(s.leetcodeUrl || ""),
       ];
+
+      // Projects
+      const projectItems: string[] = [];
+      for (const p of (s.projectLinks || []).filter((l) => l.category === "PROJECT" || !l.category)) {
+        if (p.url) projectItems.push(getItemText(p.label, p.url));
+      }
+      for (const p of s.proofUrls || []) {
+        if (p?.url) projectItems.push(getItemText(p.label, p.url));
+      }
+      for (let i = 0; i < maxProjects; i++) r.push(escapeCsv(projectItems[i] || ""));
+
+      // Fullstack
+      const fullstackItems: string[] = [];
+      for (const p of (s.projectLinks || []).filter((l) => l.category === "FULLSTACK_PROJECT")) {
+        if (p.url) fullstackItems.push(getItemText(p.label, p.url));
+      }
+      for (let i = 0; i < maxFullstack; i++) r.push(escapeCsv(fullstackItems[i] || ""));
+
+      // Inhouse links
+      const inhouseLinkItems: string[] = [];
+      for (const p of (s.projectLinks || []).filter((l) => l.category === "INHOUSE_PROJECT_LINK")) {
+        if (p.url) inhouseLinkItems.push(getItemText(p.label, p.url));
+      }
+      for (let i = 0; i < maxInhouseLinks; i++) r.push(escapeCsv(inhouseLinkItems[i] || ""));
+
+      // Inhouse docs
+      const inhouseDocItems = (s.documents || []).filter((d) => d.category === "INHOUSE_PROJECT");
+      for (let i = 0; i < maxInhouseDocs; i++) {
+        const doc = inhouseDocItems[i];
+        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+      }
+
+      // Internships
+      const internDocItems = (s.documents || []).filter((d) => d.category === "INTERNSHIP");
+      for (let i = 0; i < maxInternships; i++) {
+        const doc = internDocItems[i];
+        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+      }
+
+      // Certifications
+      const certDocItems = (s.documents || []).filter((d) => d.category === "SKILL_CERT");
+      for (let i = 0; i < maxCerts; i++) {
+        const doc = certDocItems[i];
+        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+      }
+
+      // Hackathons
+      const hackDocItems = (s.documents || []).filter((d) => d.category === "COMPETITION");
+      for (let i = 0; i < maxHackathons; i++) {
+        const doc = hackDocItems[i];
+        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+      }
+
+      // Memberships
+      const memDocItems = (s.documents || []).filter((d) => d.category === "MEMBERSHIP");
+      for (let i = 0; i < maxMemberships; i++) {
+        const doc = memDocItems[i];
+        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+      }
+
+      // SHL
+      const shlDocItems = (s.documents || []).filter((d) => d.category === "SHL");
+      for (let i = 0; i < maxShl; i++) {
+        const doc = shlDocItems[i];
+        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+      }
+
+      // Marksheets
+      const doc10th = (s.documents || []).find((d) => d.category === "TENTH_MARKSHEET");
+      r.push(escapeCsv(doc10th ? getItemText(doc10th.fileName, makeCsvDocLink(doc10th, s.uploadToken), doc10th.note) : ""));
+
+      const doc12th = (s.documents || []).find((d) => d.category === "TWELFTH_MARKSHEET");
+      r.push(escapeCsv(doc12th ? getItemText(doc12th.fileName, makeCsvDocLink(doc12th, s.uploadToken), doc12th.note) : ""));
+
+      const docCgpa = (s.documents || []).find((d) => d.category === "CGPA_MARKSHEET");
+      r.push(escapeCsv(docCgpa ? getItemText(docCgpa.fileName, makeCsvDocLink(docCgpa, s.uploadToken), docCgpa.note) : ""));
+
+      const docSem1 = (s.documents || []).find((d) => d.category === "SEM1_MARKSHEET");
+      r.push(escapeCsv(docSem1 ? getItemText(docSem1.fileName, makeCsvDocLink(docSem1, s.uploadToken), docSem1.note) : ""));
+
+      const docSem2 = (s.documents || []).find((d) => d.category === "SEM2_MARKSHEET");
+      r.push(escapeCsv(docSem2 ? getItemText(docSem2.fileName, makeCsvDocLink(docSem2, s.uploadToken), docSem2.note) : ""));
+
+      return r;
     });
 
     const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");

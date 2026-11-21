@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireEvaluator } from "@/lib/auth";
 import { buildXlsx, type XlsxRow } from "@/lib/xlsx";
-import { docCategoryLabel, linkCategoryLabel } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 
@@ -96,80 +95,58 @@ function makeDocLink(
   return cleanBase ? `${cleanBase}${finalPath}` : finalPath;
 }
 
-function formatDocs(
-  docs: Array<{ id?: string; category?: string; fileName?: string; fileUrl?: string; note?: string | null }> | undefined,
-  categories: string[],
-  student: ExportableCandidate,
-  baseUrl: string,
-  includeCategoryLabel = false
-): string {
-  if (!docs || docs.length === 0) return "—";
-  const matched = docs.filter((d) => d.category && categories.includes(d.category));
-  if (matched.length === 0) return "—";
-  return matched
-    .map((d) => {
-      const prefix = includeCategoryLabel ? `${docCategoryLabel(d.category || "")} - ` : "";
-      const noteStr = d.note ? ` [${d.note}]` : "";
-      const url = makeDocLink(d, student, baseUrl);
-      return `${prefix}${d.fileName || "Document"}${noteStr}${url ? `: ${url}` : ""}`;
-    })
-    .join("\n");
-}
-
-function formatProjectLinks(
-  links: Array<{ id?: string; category?: string; label?: string; url?: string }> | undefined,
-  categoryKey: string,
-  extraProofUrls?: Array<{ label: string; url: string }>
-): string {
-  const items: string[] = [];
-  if (links && links.length > 0) {
-    for (const l of links) {
-      if (l.category === categoryKey || (!l.category && categoryKey === "PROJECT")) {
-        if (l.url) items.push(`${l.label ? `${l.label}: ` : ""}${l.url}`);
-      }
-    }
-  }
-  if (extraProofUrls && extraProofUrls.length > 0 && categoryKey === "PROJECT") {
-    for (const p of extraProofUrls) {
-      if (p.url) items.push(`${p.label ? `${p.label}: ` : ""}${p.url}`);
-    }
-  }
-  return items.length > 0 ? items.join("\n") : "—";
-}
-
-function formatAllEvidence(student: ExportableCandidate, baseUrl: string): string {
-  const lines: string[] = [];
-  if (student.githubUrl) lines.push(`GitHub: ${student.githubUrl}`);
-  if (student.leetcodeUrl) lines.push(`LeetCode: ${student.leetcodeUrl}`);
-
-  if (student.projectLinks && student.projectLinks.length > 0) {
-    for (const p of student.projectLinks) {
-      if (p.url) {
-        lines.push(`[${linkCategoryLabel(p.category || "")}] ${p.label ? `${p.label}: ` : ""}${p.url}`);
-      }
-    }
-  }
-
-  const proofs = parseProofUrls(student.proofUrls);
-  for (const p of proofs) {
-    if (p.url) {
-      lines.push(`[Project Link] ${p.label ? `${p.label}: ` : ""}${p.url}`);
-    }
-  }
-
-  if (student.documents && student.documents.length > 0) {
-    for (const d of student.documents) {
-      const url = makeDocLink(d, student, baseUrl);
-      const noteStr = d.note ? ` (${d.note})` : "";
-      lines.push(`[${docCategoryLabel(d.category || "")}] ${d.fileName || "File"}${noteStr}${url ? `: ${url}` : ""}`);
-    }
-  }
-
-  return lines.length > 0 ? lines.join("\n") : "—";
+function getItemText(label: string | null | undefined, url: string, note?: string | null): string {
+  const parts: string[] = [];
+  if (label && label.trim()) parts.push(label.trim());
+  if (note && note.trim()) parts.push(`(${note.trim()})`);
+  const prefix = parts.length > 0 ? `${parts.join(" ")}: ` : "";
+  return `${prefix}${url}`;
 }
 
 function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = ""): Buffer {
-  const headers = [
+  // Determine dynamic column counts per category across all exported candidates
+  let maxProjects = 3;
+  let maxFullstack = 2;
+  let maxInhouseLinks = 2;
+  let maxInhouseDocs = 2;
+  let maxInternships = 2;
+  let maxCerts = 6;
+  let maxHackathons = 4;
+  let maxMemberships = 2;
+  let maxShl = 1;
+
+  for (const s of students) {
+    const pLinks = (s.projectLinks || []).filter((l) => l.category === "PROJECT" || !l.category);
+    const proofLinks = parseProofUrls(s.proofUrls);
+    maxProjects = Math.max(maxProjects, pLinks.length + proofLinks.length);
+
+    const fsLinks = (s.projectLinks || []).filter((l) => l.category === "FULLSTACK_PROJECT");
+    maxFullstack = Math.max(maxFullstack, fsLinks.length);
+
+    const ihLinks = (s.projectLinks || []).filter((l) => l.category === "INHOUSE_PROJECT_LINK");
+    maxInhouseLinks = Math.max(maxInhouseLinks, ihLinks.length);
+
+    const ihDocs = (s.documents || []).filter((d) => d.category === "INHOUSE_PROJECT");
+    maxInhouseDocs = Math.max(maxInhouseDocs, ihDocs.length);
+
+    const internDocs = (s.documents || []).filter((d) => d.category === "INTERNSHIP");
+    maxInternships = Math.max(maxInternships, internDocs.length);
+
+    const certDocs = (s.documents || []).filter((d) => d.category === "SKILL_CERT");
+    maxCerts = Math.max(maxCerts, certDocs.length);
+
+    const hackDocs = (s.documents || []).filter((d) => d.category === "COMPETITION");
+    maxHackathons = Math.max(maxHackathons, hackDocs.length);
+
+    const memDocs = (s.documents || []).filter((d) => d.category === "MEMBERSHIP");
+    maxMemberships = Math.max(maxMemberships, memDocs.length);
+
+    const shlDocs = (s.documents || []).filter((d) => d.category === "SHL");
+    maxShl = Math.max(maxShl, shlDocs.length);
+  }
+
+  // Official 19 Rubric Columns
+  const headers: string[] = [
     "Registration Number",
     "Full Name (AS PER ATTENDANCE)",
     "Section",
@@ -191,20 +168,9 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = "")
     "Total",
     "GitHub Profile Link",
     "Coding Profile Link (LeetCode)",
-    "Projects Links (Repo & Demo)",
-    "Full Stack Project Links",
-    "In-House Project Links",
-    "Internship Proof Documents",
-    "Skillset & Certifications Proofs",
-    "Hackathons & Competitions Proofs",
-    "In-House Project Proofs",
-    "Membership Proofs",
-    "SHL Assessment Proofs",
-    "Academic Marksheets (10th / 12th / CGPA)",
-    "All Uploaded Documents & Links (Consolidated)",
   ];
 
-  const columnWidths = [
+  const columnWidths: number[] = [
     20, // Registration Number
     30, // Full Name (AS PER ATTENDANCE)
     10, // Section
@@ -224,20 +190,57 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = "")
     16, // Membership of Professional Bodies (2)
     25, // SHL Assessment ... (13)
     12, // Total
-    32, // GitHub Profile Link
-    32, // Coding Profile Link (LeetCode)
-    42, // Projects Links (Repo & Demo)
-    42, // Full Stack Project Links
-    35, // In-House Project Links
-    48, // Internship Proof Documents
-    48, // Skillset & Certifications Proofs
-    48, // Hackathons & Competitions Proofs
-    42, // In-House Project Proofs
-    38, // Membership Proofs
-    42, // SHL Assessment Proofs
-    48, // Academic Marksheets (10th / 12th / CGPA)
-    55, // All Uploaded Documents & Links (Consolidated)
+    35, // GitHub Profile Link
+    35, // Coding Profile Link (LeetCode)
   ];
+
+  // Dynamic slot headers: each link and document gets its own separate Excel box (column)
+  for (let i = 1; i <= maxProjects; i++) {
+    headers.push(`Projects Done - Link ${i}`);
+    columnWidths.push(42);
+  }
+  for (let i = 1; i <= maxFullstack; i++) {
+    headers.push(`Full Stack Developer - Link ${i}`);
+    columnWidths.push(42);
+  }
+  for (let i = 1; i <= maxInhouseLinks; i++) {
+    headers.push(`Inhouse Projects - Link ${i}`);
+    columnWidths.push(42);
+  }
+  for (let i = 1; i <= maxInhouseDocs; i++) {
+    headers.push(`Inhouse Projects - Document ${i}`);
+    columnWidths.push(45);
+  }
+  for (let i = 1; i <= maxInternships; i++) {
+    headers.push(`Internship Experience - Document ${i}`);
+    columnWidths.push(45);
+  }
+  for (let i = 1; i <= maxCerts; i++) {
+    headers.push(`Skillset & Certifications - Document ${i}`);
+    columnWidths.push(45);
+  }
+  for (let i = 1; i <= maxHackathons; i++) {
+    headers.push(`Coding Competitions & Hackathons - Document ${i}`);
+    columnWidths.push(45);
+  }
+  for (let i = 1; i <= maxMemberships; i++) {
+    headers.push(`Professional Membership - Document ${i}`);
+    columnWidths.push(42);
+  }
+  for (let i = 1; i <= maxShl; i++) {
+    headers.push(`SHL Assessment - Document ${i}`);
+    columnWidths.push(45);
+  }
+
+  // Academic marksheets
+  headers.push(
+    "Academic - 10th Marksheet Document",
+    "Academic - 12th Marksheet Document",
+    "Academic - Degree CGPA Marksheet Document",
+    "Academic - Semester 1 Marksheet Document",
+    "Academic - Semester 2 Marksheet Document"
+  );
+  columnWidths.push(45, 45, 45, 45, 45);
 
   const rows: XlsxRow[] = students.map((s, idx) => {
     const rowNum = idx + 2; // Row 1 is header
@@ -315,9 +318,8 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = "")
               100
           ) / 100;
 
-    const proofList = parseProofUrls(s.proofUrls);
-
-    return [
+    // Base row (Columns 1-19) + Profiles (20-21)
+    const row: XlsxRow = [
       { value: s.registerNumber || "", style: "center" },
       { value: s.fullName || "", style: "default" },
       { value: s.section || "AO1", style: "center" },
@@ -341,30 +343,120 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = "")
         value: computedTotal,
         style: "boldCenter",
       },
-      // Link & Proof Columns (Columns 20-32)
-      { value: s.githubUrl || "—", style: "default" },
-      { value: s.leetcodeUrl || "—", style: "default" },
-      { value: formatProjectLinks(s.projectLinks, "PROJECT", proofList), style: "default" },
-      { value: formatProjectLinks(s.projectLinks, "FULLSTACK_PROJECT"), style: "default" },
-      { value: formatProjectLinks(s.projectLinks, "INHOUSE_PROJECT_LINK"), style: "default" },
-      { value: formatDocs(s.documents, ["INTERNSHIP"], s, baseUrl), style: "default" },
-      { value: formatDocs(s.documents, ["SKILL_CERT"], s, baseUrl), style: "default" },
-      { value: formatDocs(s.documents, ["COMPETITION"], s, baseUrl), style: "default" },
-      { value: formatDocs(s.documents, ["INHOUSE_PROJECT"], s, baseUrl), style: "default" },
-      { value: formatDocs(s.documents, ["MEMBERSHIP"], s, baseUrl), style: "default" },
-      { value: formatDocs(s.documents, ["SHL"], s, baseUrl), style: "default" },
-      {
-        value: formatDocs(
-          s.documents,
-          ["TENTH_MARKSHEET", "TWELFTH_MARKSHEET", "CGPA_MARKSHEET", "SEM1_MARKSHEET", "SEM2_MARKSHEET"],
-          s,
-          baseUrl,
-          true
-        ),
-        style: "default",
-      },
-      { value: formatAllEvidence(s, baseUrl), style: "default" },
+      { value: s.githubUrl || "", style: "default" },
+      { value: s.leetcodeUrl || "", style: "default" },
     ];
+
+    // 1. Projects Done (Link 1..N) - each in its own box
+    const projectItems: string[] = [];
+    for (const p of (s.projectLinks || []).filter((l) => l.category === "PROJECT" || !l.category)) {
+      if (p.url) projectItems.push(getItemText(p.label, p.url));
+    }
+    for (const p of parseProofUrls(s.proofUrls)) {
+      if (p.url) projectItems.push(getItemText(p.label, p.url));
+    }
+    for (let i = 0; i < maxProjects; i++) {
+      row.push({ value: projectItems[i] || "", style: "default" });
+    }
+
+    // 2. Full Stack Developer (Link 1..N) - each in its own box
+    const fullstackItems: string[] = [];
+    for (const p of (s.projectLinks || []).filter((l) => l.category === "FULLSTACK_PROJECT")) {
+      if (p.url) fullstackItems.push(getItemText(p.label, p.url));
+    }
+    for (let i = 0; i < maxFullstack; i++) {
+      row.push({ value: fullstackItems[i] || "", style: "default" });
+    }
+
+    // 3. Inhouse Projects Links (Link 1..N) - each in its own box
+    const inhouseLinkItems: string[] = [];
+    for (const p of (s.projectLinks || []).filter((l) => l.category === "INHOUSE_PROJECT_LINK")) {
+      if (p.url) inhouseLinkItems.push(getItemText(p.label, p.url));
+    }
+    for (let i = 0; i < maxInhouseLinks; i++) {
+      row.push({ value: inhouseLinkItems[i] || "", style: "default" });
+    }
+
+    // 4. Inhouse Projects Documents (Doc 1..N) - each in its own box
+    const inhouseDocItems = (s.documents || []).filter((d) => d.category === "INHOUSE_PROJECT");
+    for (let i = 0; i < maxInhouseDocs; i++) {
+      const doc = inhouseDocItems[i];
+      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
+      row.push({ value: val, style: "default" });
+    }
+
+    // 5. Internship Documents (Doc 1..N) - each in its own box
+    const internDocItems = (s.documents || []).filter((d) => d.category === "INTERNSHIP");
+    for (let i = 0; i < maxInternships; i++) {
+      const doc = internDocItems[i];
+      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
+      row.push({ value: val, style: "default" });
+    }
+
+    // 6. Skillset & Certifications Documents (Doc 1..N) - each in its own box
+    const certDocItems = (s.documents || []).filter((d) => d.category === "SKILL_CERT");
+    for (let i = 0; i < maxCerts; i++) {
+      const doc = certDocItems[i];
+      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
+      row.push({ value: val, style: "default" });
+    }
+
+    // 7. Coding Competitions & Hackathons Documents (Doc 1..N) - each in its own box
+    const hackDocItems = (s.documents || []).filter((d) => d.category === "COMPETITION");
+    for (let i = 0; i < maxHackathons; i++) {
+      const doc = hackDocItems[i];
+      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
+      row.push({ value: val, style: "default" });
+    }
+
+    // 8. Professional Memberships Documents (Doc 1..N) - each in its own box
+    const memDocItems = (s.documents || []).filter((d) => d.category === "MEMBERSHIP");
+    for (let i = 0; i < maxMemberships; i++) {
+      const doc = memDocItems[i];
+      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
+      row.push({ value: val, style: "default" });
+    }
+
+    // 9. SHL Assessment Documents (Doc 1..N) - each in its own box
+    const shlDocItems = (s.documents || []).filter((d) => d.category === "SHL");
+    for (let i = 0; i < maxShl; i++) {
+      const doc = shlDocItems[i];
+      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
+      row.push({ value: val, style: "default" });
+    }
+
+    // 10. Academic Marksheet Documents - each in its own box
+    const doc10th = (s.documents || []).find((d) => d.category === "TENTH_MARKSHEET");
+    row.push({
+      value: doc10th ? getItemText(doc10th.fileName, makeDocLink(doc10th, s, baseUrl), doc10th.note) : "",
+      style: "default",
+    });
+
+    const doc12th = (s.documents || []).find((d) => d.category === "TWELFTH_MARKSHEET");
+    row.push({
+      value: doc12th ? getItemText(doc12th.fileName, makeDocLink(doc12th, s, baseUrl), doc12th.note) : "",
+      style: "default",
+    });
+
+    const docCgpa = (s.documents || []).find((d) => d.category === "CGPA_MARKSHEET");
+    row.push({
+      value: docCgpa ? getItemText(docCgpa.fileName, makeDocLink(docCgpa, s, baseUrl), docCgpa.note) : "",
+      style: "default",
+    });
+
+    const docSem1 = (s.documents || []).find((d) => d.category === "SEM1_MARKSHEET");
+    row.push({
+      value: docSem1 ? getItemText(docSem1.fileName, makeDocLink(docSem1, s, baseUrl), docSem1.note) : "",
+      style: "default",
+    });
+
+    const docSem2 = (s.documents || []).find((d) => d.category === "SEM2_MARKSHEET");
+    row.push({
+      value: docSem2 ? getItemText(docSem2.fileName, makeDocLink(docSem2, s, baseUrl), docSem2.note) : "",
+      style: "default",
+    });
+
+    return row;
   });
 
   return buildXlsx({
@@ -401,7 +493,7 @@ function getBaseUrl(req: Request): string {
 /**
  * GET /api/students/export
  * Retrieves all student records from the database and returns the official Excel workbook
- * complete with all rubric marks, profile links, project links, and document verification URLs.
+ * with every rubric mark, link, and document proof formatted into its own individual cell.
  */
 export async function GET(req: Request) {
   const { error } = await requireEvaluator();
