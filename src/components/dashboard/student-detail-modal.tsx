@@ -268,6 +268,7 @@ export function StudentDetailModal({
 
   // Student Edit Unlock state (Super Admin & Evaluators)
   const [unlockInfo, setUnlockInfo] = useState<{
+    studentId?: string;
     sections: string[];
     reason?: string;
     unlockedBy?: string;
@@ -845,6 +846,11 @@ export function StudentDetailModal({
                         <span className="font-semibold underline">
                           {getUnlockedSectionLabels(unlockInfo.sections)}
                         </span>
+                        {unlockInfo.studentId === "GLOBAL_ALL" && (
+                          <span className="ml-1.5 rounded bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5">
+                            GLOBAL (ALL STUDENTS)
+                          </span>
+                        )}
                         {unlockInfo.unlockedBy && (
                           <span> · Granted by <strong>{unlockInfo.unlockedBy}</strong></span>
                         )}

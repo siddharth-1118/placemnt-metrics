@@ -61,6 +61,8 @@ export const UNLOCKABLE_SECTIONS_DEF: Array<{
   },
 ];
 
+export const GLOBAL_STUDENT_UNLOCK_KEY = "global_student_unlock";
+
 export function getUnlockedSectionLabels(sections: string[] = []): string {
   if (!sections || sections.length === 0) return "None";
   if (sections.includes("ALL")) return "Full Profile (All Sections)";
@@ -73,13 +75,12 @@ export function getUnlockedSectionLabels(sections: string[] = []): string {
 }
 
 /**
- * Retrieve the current active unlock record for a student from the Setting store.
+ * Retrieve the global unlock record applied to ALL students simultaneously.
  */
-export async function getStudentUnlock(studentId: string): Promise<StudentUnlockRecord | null> {
-  if (!studentId) return null;
+export async function getGlobalStudentUnlock(): Promise<StudentUnlockRecord | null> {
   try {
     const row = await prisma.setting.findUnique({
-      where: { key: `student_unlock:${studentId}` },
+      where: { key: GLOBAL_STUDENT_UNLOCK_KEY },
     });
     if (!row?.value) return null;
     const parsed = JSON.parse(row.value) as StudentUnlockRecord;
@@ -87,6 +88,120 @@ export async function getStudentUnlock(studentId: string): Promise<StudentUnlock
       return null;
     }
     return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist a global unlock record that instantly grants edit access to ALL students.
+ */
+export async function setGlobalStudentUnlock(data: {
+  sections: UnlockableSection[];
+  reason?: string;
+  byName: string;
+  byId: string;
+}): Promise<StudentUnlockRecord> {
+  const record: StudentUnlockRecord = {
+    studentId: "GLOBAL_ALL",
+    sections: data.sections,
+    unlockedBy: data.byName,
+    unlockedById: data.byId,
+    reason: data.reason?.trim() || "Global unlock granted by Super Admin for all students",
+    unlockedAt: new Date().toISOString(),
+  };
+
+  await prisma.setting.upsert({
+    where: { key: GLOBAL_STUDENT_UNLOCK_KEY },
+    create: {
+      key: GLOBAL_STUDENT_UNLOCK_KEY,
+      value: JSON.stringify(record),
+    },
+    update: {
+      value: JSON.stringify(record),
+    },
+  });
+
+  return record;
+}
+
+/**
+ * Revoke global unlock applied to all students.
+ */
+export async function revokeGlobalStudentUnlock(): Promise<void> {
+  try {
+    await prisma.setting.delete({
+      where: { key: GLOBAL_STUDENT_UNLOCK_KEY },
+    });
+  } catch {
+    // If not found, ignore
+  }
+}
+
+/**
+ * Completely lock all students: revokes global unlock AND all individual student unlocks.
+ */
+export async function revokeAllStudentUnlocks(): Promise<void> {
+  try {
+    await prisma.setting.deleteMany({
+      where: {
+        OR: [
+          { key: GLOBAL_STUDENT_UNLOCK_KEY },
+          { key: { startsWith: "student_unlock:" } },
+        ],
+      },
+    });
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Retrieve the current active unlock record for a student from the Setting store.
+ * Checks both global unlock (applies to all students) and student-specific unlock.
+ */
+export async function getStudentUnlock(studentId: string): Promise<StudentUnlockRecord | null> {
+  if (!studentId) return null;
+  try {
+    const globalUnlock = await getGlobalStudentUnlock();
+
+    const row = await prisma.setting.findUnique({
+      where: { key: `student_unlock:${studentId}` },
+    });
+    let individualUnlock: StudentUnlockRecord | null = null;
+    if (row?.value) {
+      try {
+        const parsed = JSON.parse(row.value) as StudentUnlockRecord;
+        if (parsed && Array.isArray(parsed.sections) && parsed.sections.length > 0) {
+          individualUnlock = parsed;
+        }
+      } catch {}
+    }
+
+    if (globalUnlock && individualUnlock) {
+      const hasAll =
+        globalUnlock.sections.includes("ALL") || individualUnlock.sections.includes("ALL");
+      const mergedSections = hasAll
+        ? (["ALL"] as UnlockableSection[])
+        : Array.from(new Set([...globalUnlock.sections, ...individualUnlock.sections]));
+      return {
+        studentId,
+        sections: mergedSections,
+        unlockedBy: individualUnlock.unlockedBy || globalUnlock.unlockedBy,
+        unlockedById: individualUnlock.unlockedById || globalUnlock.unlockedById,
+        reason: [globalUnlock.reason, individualUnlock.reason].filter(Boolean).join(" | "),
+        unlockedAt: individualUnlock.unlockedAt || globalUnlock.unlockedAt,
+      };
+    }
+
+    if (globalUnlock) {
+      return {
+        ...globalUnlock,
+        studentId,
+      };
+    }
+
+    return individualUnlock;
   } catch {
     return null;
   }
@@ -157,7 +272,21 @@ export async function revokeStudentUnlock(studentId: string): Promise<void> {
  * Retrieve all student unlocks in a single query for fast dashboard rendering.
  */
 export async function getAllStudentUnlocks(): Promise<Record<string, StudentUnlockRecord>> {
+  const state = await getAllStudentUnlocksState();
+  return state.unlocks;
+}
+
+/**
+ * Full state of both global unlock and individual student unlocks.
+ */
+export async function getAllStudentUnlocksState(): Promise<{
+  globalUnlock: StudentUnlockRecord | null;
+  isGlobalActive: boolean;
+  unlocks: Record<string, StudentUnlockRecord>;
+  count: number;
+}> {
   try {
+    const globalUnlock = await getGlobalStudentUnlock();
     const rows = await prisma.setting.findMany({
       where: {
         key: { startsWith: "student_unlock:" },
@@ -175,8 +304,18 @@ export async function getAllStudentUnlocks(): Promise<Record<string, StudentUnlo
         /* ignore corrupt records */
       }
     }
-    return result;
+    return {
+      globalUnlock,
+      isGlobalActive: !!globalUnlock && globalUnlock.sections.length > 0,
+      unlocks: result,
+      count: Object.keys(result).length,
+    };
   } catch {
-    return {};
+    return {
+      globalUnlock: null,
+      isGlobalActive: false,
+      unlocks: {},
+      count: 0,
+    };
   }
 }

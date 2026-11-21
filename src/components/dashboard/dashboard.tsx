@@ -18,14 +18,18 @@ import {
   Mail,
   Cloud,
   Unlock,
+  Lock,
+  Zap,
 } from "lucide-react";
 import { Badge, Button, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
 import { MissingDocsModal } from "@/components/dashboard/missing-docs-modal";
 import { OneDriveSyncModal } from "@/components/dashboard/onedrive-sync-modal";
+import { GlobalUnlockModal } from "@/components/dashboard/global-unlock-modal";
 import { scopesAreFull, type ScoreScope } from "@/lib/scopes";
 import { SRM_OFFICIAL_METRICS, type StudentDto } from "@/lib/types";
 import { auditStudentDocuments, docCategoryLabel, linkCategoryLabel } from "@/lib/categories";
+import { getUnlockedSectionLabels } from "@/lib/student-unlock";
 
 type SortKey = "rank" | "totalScore" | "missingDocs" | "cgpa" | "name" | "registerNumber";
 type StatusFilter = "ALL" | "PENDING" | "VERIFIED";
@@ -98,6 +102,9 @@ export function Dashboard({
   const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [oneDriveModalOpen, setOneDriveModalOpen] = useState(false);
+  const [globalUnlockModalOpen, setGlobalUnlockModalOpen] = useState(false);
+  const [isGlobalActive, setIsGlobalActive] = useState(false);
+  const [globalUnlock, setGlobalUnlock] = useState<any>(null);
   const [activeSection, setActiveSection] = useState<ActiveSection>("STUDENTS");
   const [activeUnlocks, setActiveUnlocks] = useState<Record<string, any>>({});
 
@@ -123,7 +130,11 @@ export function Dashboard({
       fetch("/api/students/unlock-batch")
         .then((r) => (r.ok ? r.json() : null))
         .then((b) => {
-          if (b?.unlocks) setActiveUnlocks(b.unlocks);
+          if (b) {
+            if (b.unlocks) setActiveUnlocks(b.unlocks);
+            setIsGlobalActive(b.isGlobalActive ?? false);
+            setGlobalUnlock(b.globalUnlock ?? null);
+          }
         })
         .catch(() => undefined);
     } catch {
@@ -132,6 +143,21 @@ export function Dashboard({
       setLoading(false);
     }
   }, []);
+
+  async function handleQuickLockAll() {
+    try {
+      const res = await fetch("/api/students/unlock-batch", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allStudents: true }),
+      });
+      if (res.ok) {
+        setIsGlobalActive(false);
+        setGlobalUnlock(null);
+        await load();
+      }
+    } catch {}
+  }
 
   useEffect(() => {
     if (initialStudents && initialStudents.length > 0) {
@@ -658,6 +684,29 @@ export function Dashboard({
 
           <Button
             size="sm"
+            onClick={() => setGlobalUnlockModalOpen(true)}
+            className={`h-8 text-xs font-semibold shadow-xs ${
+              isGlobalActive
+                ? "bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-500/40"
+                : "border border-amber-500/50 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:border-amber-600 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40"
+            }`}
+            title="Grant or revoke profile and document edit permissions for ALL students at once"
+          >
+            {isGlobalActive ? (
+              <>
+                <Unlock className="mr-1.5 h-3.5 w-3.5" />
+                <span>⚡ All Students Unlocked</span>
+              </>
+            ) : (
+              <>
+                <Lock className="mr-1.5 h-3.5 w-3.5" />
+                <span>⚡ Unlock All Students</span>
+              </>
+            )}
+          </Button>
+
+          <Button
+            size="sm"
             onClick={() => setOneDriveModalOpen(true)}
             className="h-8 bg-[#0078d4] text-xs font-medium text-white hover:bg-[#0066b8]"
           >
@@ -680,6 +729,41 @@ export function Dashboard({
           </Button>
         </div>
       </div>
+
+      {/* Global Unlock Alert Banner */}
+      {isGlobalActive && globalUnlock && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs text-emerald-950 dark:text-emerald-100 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-md bg-emerald-500/20 p-1.5 text-emerald-700 dark:text-emerald-300">
+              <Unlock className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="font-bold">⚡ GLOBAL EDIT ACCESS ACTIVE: </span>
+              <span>All students have permission to edit: <strong>{getUnlockedSectionLabels(globalUnlock.sections)}</strong>.</span>
+              {globalUnlock.unlockedBy && <span className="opacity-75"> · Authorized by {globalUnlock.unlockedBy}</span>}
+              {globalUnlock.reason && <span className="italic opacity-85"> · &quot;{globalUnlock.reason}&quot;</span>}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setGlobalUnlockModalOpen(true)}
+              className="h-7 text-xs border-emerald-600/40 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-500/15"
+            >
+              Configure
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleQuickLockAll}
+              className="h-7 bg-rose-600 hover:bg-rose-700 text-xs text-white font-semibold"
+            >
+              <Lock className="mr-1 h-3 w-3" />
+              Lock All Students
+            </Button>
+          </div>
+        </div>
+      )}
 
       {recalcMsg && (
         <div className="flex items-center gap-2 rounded border border-[#b8ddc4] bg-[#eaf4ed] px-3.5 py-2 text-xs text-[#165b33] dark:border-[#215736] dark:bg-[#133822] dark:text-[#78d69f]">
@@ -1391,12 +1475,16 @@ export function Dashboard({
                                       ? "In Review"
                                       : "Pending"}
                                 </Badge>
-                                {activeUnlocks[s.id] && (
+                                {(isGlobalActive || activeUnlocks[s.id]) && (
                                   <span
                                     className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 px-1 py-0.5 text-[9px] font-bold text-emerald-800 dark:text-emerald-300"
-                                    title="Edit Access Granted by Super Admin"
+                                    title={
+                                      isGlobalActive
+                                        ? "All Students Globally Unlocked by Super Admin"
+                                        : "Edit Access Granted by Super Admin"
+                                    }
                                   >
-                                    <Unlock className="h-2.5 w-2.5" /> Unlocked
+                                    <Unlock className="h-2.5 w-2.5" /> {isGlobalActive ? "All Unlocked" : "Unlocked"}
                                   </span>
                                 )}
                               </div>
@@ -1561,6 +1649,16 @@ export function Dashboard({
           initialTopic={topicFilter !== "ALL" ? topicFilter : "ALL_REQUIRED"}
           initialTab={modalInitialTab}
           onClose={() => setShowShareModal(false)}
+        />
+      )}
+
+      {/* Global Unlock Modal for Super Admin (All Students at once) */}
+      {globalUnlockModalOpen && (
+        <GlobalUnlockModal
+          isOpen={globalUnlockModalOpen}
+          studentCount={students.length}
+          onClose={() => setGlobalUnlockModalOpen(false)}
+          onUpdated={load}
         />
       )}
     </div>
