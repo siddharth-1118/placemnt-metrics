@@ -106,8 +106,57 @@ export async function GET() {
   });
   // Scoped coordinators receive only the evidence inside their sections;
   // super admin and unrestricted coordinators get everything.
+  const dtos = students.map((s) => filterStudentDtoForUser(toDto(s), user));
+
+  // Lightweight background auto-healer: fix any student records whose CGPA or academic score is 0
+  const uncalculated = students.filter(
+    (s) =>
+      (s.cgpa <= 0 && (s.sgpaSem1 > 0 || s.sgpaSem2 > 0)) ||
+      (s.scoreAcademic <= 0 &&
+        (s.tenthPercent > 0 || s.twelfthPercent > 0 || s.cgpa > 0 || s.sgpaSem1 > 0 || s.sgpaSem2 > 0))
+  );
+  if (uncalculated.length > 0) {
+    Promise.all(
+      uncalculated.map(async (st) => {
+        const s1 = Number(st.sgpaSem1 || 0);
+        const s2 = Number(st.sgpaSem2 || 0);
+        const rawCgpa = Number(st.cgpa || 0);
+        const effCgpa =
+          rawCgpa > 0
+            ? rawCgpa
+            : s1 > 0 && s2 > 0
+              ? Math.round(((s1 + s2) / 2) * 100) / 100
+              : s1 > 0
+                ? s1
+                : s2 > 0
+                  ? s2
+                  : 0;
+        const acadScore = suggestAcademicScore(st.tenthPercent, st.twelfthPercent, effCgpa);
+        const tot = clampScores({
+          academic: acadScore,
+          github: st.scoreGithub,
+          coding: st.scoreCoding,
+          internship: st.scoreInternship,
+          certifications: st.scoreCertifications,
+          projects: st.scoreProjects,
+          fullstack: st.scoreFullstack,
+          hackathons: st.scoreHackathons,
+          inhouse: st.scoreInhouse,
+          membership: st.scoreMembership,
+          shl: st.scoreShl,
+        }).total;
+        return prisma.student
+          .update({
+            where: { id: st.id },
+            data: { cgpa: effCgpa, scoreAcademic: acadScore, totalScore: tot },
+          })
+          .catch(() => {});
+      })
+    ).catch(() => {});
+  }
+
   return NextResponse.json(
-    { students: students.map((s) => filterStudentDtoForUser(toDto(s), user)) },
+    { students: dtos },
     {
       headers: {
         "Cache-Control": "private, no-cache, stale-while-revalidate=5",
@@ -153,9 +202,20 @@ export async function POST(req: Request) {
   const d = parsed.data;
   const proofUrls = (d.proofUrls ?? []).filter((p) => p.label && p.url);
 
-  // CGPA is DERIVED, never client-trusted: (Sem 1 SGPA + Sem 2 SGPA) / 2,
-  // rounded to 2 decimals.
-  const cgpa = Math.round(((d.sgpaSem1 + d.sgpaSem2) / 2) * 100) / 100;
+  // CGPA is DERIVED from SGPAs (Sem 1 SGPA + Sem 2 SGPA) / 2, or fallback to single sem or direct CGPA
+  const s1 = Number(d.sgpaSem1 ?? 0);
+  const s2 = Number(d.sgpaSem2 ?? 0);
+  const rawCgpa = Number(d.cgpa ?? 0);
+  const cgpa =
+    s1 > 0 && s2 > 0
+      ? Math.round(((s1 + s2) / 2) * 100) / 100
+      : s1 > 0
+        ? s1
+        : s2 > 0
+          ? s2
+          : rawCgpa > 0
+            ? rawCgpa
+            : 0;
 
   const data = {
     registerNumber: d.registerNumber,
@@ -260,8 +320,8 @@ export async function POST(req: Request) {
       data.twelfthPercent = existing.twelfthPercent;
       data.sgpaSem1 = existing.sgpaSem1;
       data.sgpaSem2 = existing.sgpaSem2;
-      data.cgpa = existing.cgpa;
-      academicScoreToSet = existing.scoreAcademic;
+      data.cgpa = existing.cgpa > 0 ? existing.cgpa : cgpa;
+      academicScoreToSet = existing.scoreAcademic > 0 ? existing.scoreAcademic : academic;
     }
   }
 
@@ -269,11 +329,26 @@ export async function POST(req: Request) {
   if (existing) {
     // Note: password is intentionally NOT accepted on resubmit — the submit
     // endpoint is public, so allowing it would let anyone take over an account.
+    const newTotal = clampScores({
+      academic: academicScoreToSet,
+      github: existing.scoreGithub,
+      coding: existing.scoreCoding,
+      internship: existing.scoreInternship,
+      certifications: existing.scoreCertifications,
+      projects: existing.scoreProjects,
+      fullstack: existing.scoreFullstack,
+      hackathons: existing.scoreHackathons,
+      inhouse: existing.scoreInhouse,
+      membership: existing.scoreMembership,
+      shl: existing.scoreShl,
+    }).total;
+
     student = await prisma.student.update({
       where: { id: existing.id },
       data: {
         ...data,
         scoreAcademic: academicScoreToSet,
+        totalScore: newTotal,
         // A resubmission invalidates the previous sign-off: the profile
         // goes back to pending AND the old verifier stamp is cleared (no
         // stale "verified by" attribution on an unverified record).
@@ -305,10 +380,16 @@ export async function POST(req: Request) {
     });
   }
 
-  // Await the scrape jobs so results are ready when this response lands
-  // (serverless platforms freeze execution after the response). Failures are
-  // persisted on the job rows — the response always goes through.
-  await enqueueScrapes(student.id, student.githubUrl, student.leetcodeUrl);
+  // Safe bounded await (max 2.5s) so external scraper latency never hangs or crashes
+  // concurrent student submissions on serverless. Scrapes write back to DB when settled.
+  try {
+    await Promise.race([
+      enqueueScrapes(student.id, student.githubUrl, student.leetcodeUrl),
+      new Promise((resolve) => setTimeout(resolve, 2500)),
+    ]);
+  } catch (scrapeErr) {
+    console.warn("Background scrape warning:", scrapeErr);
+  }
 
   // Re-fetch so the response carries the freshly written scrape payloads.
   const fresh = await prisma.student.findUnique({

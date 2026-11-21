@@ -28,6 +28,20 @@ export async function POST() {
   const details: { registerNumber: string; academic: number; total: number }[] = [];
 
   for (const s of students) {
+    const rawCgpa = Number(s.cgpa || 0);
+    const s1 = Number(s.sgpaSem1 || 0);
+    const s2 = Number(s.sgpaSem2 || 0);
+    const effectiveCgpa =
+      rawCgpa > 0
+        ? rawCgpa
+        : s1 > 0 && s2 > 0
+          ? Math.round(((s1 + s2) / 2) * 100) / 100
+          : s1 > 0
+            ? s1
+            : s2 > 0
+              ? s2
+              : 0;
+
     // The three automatic components are recomputed from source data (marks
     // band tables + latest scrapes) — except components the super admin has
     // manually overridden; those keep their stored value.
@@ -47,7 +61,9 @@ export async function POST() {
       shl: s.scoreShl,
     });
 
+    const needsCgpaUpdate = effectiveCgpa > 0 && s.cgpa !== effectiveCgpa;
     if (
+      needsCgpaUpdate ||
       clamped.academic !== s.scoreAcademic ||
       clamped.github !== s.scoreGithub ||
       clamped.coding !== s.scoreCoding ||
@@ -56,6 +72,7 @@ export async function POST() {
       await prisma.student.update({
         where: { id: s.id },
         data: {
+          ...(needsCgpaUpdate ? { cgpa: effectiveCgpa } : {}),
           scoreAcademic: clamped.academic,
           scoreGithub: clamped.github,
           scoreCoding: clamped.coding,

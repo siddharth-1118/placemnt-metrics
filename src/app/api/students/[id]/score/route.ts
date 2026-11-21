@@ -118,7 +118,16 @@ export async function PATCH(
   const newTwelfth = academicMarksInput?.twelfthPercent !== undefined ? academicMarksInput.twelfthPercent : student.twelfthPercent;
   const newSgpa1 = academicMarksInput?.sgpaSem1 !== undefined ? academicMarksInput.sgpaSem1 : student.sgpaSem1;
   const newSgpa2 = academicMarksInput?.sgpaSem2 !== undefined ? academicMarksInput.sgpaSem2 : student.sgpaSem2;
-  const newCgpa = Math.round(((newSgpa1 + newSgpa2) / 2) * 100) / 100;
+  const newCgpa =
+    newSgpa1 > 0 && newSgpa2 > 0
+      ? Math.round(((newSgpa1 + newSgpa2) / 2) * 100) / 100
+      : newSgpa1 > 0
+        ? newSgpa1
+        : newSgpa2 > 0
+          ? newSgpa2
+          : student.cgpa > 0
+            ? student.cgpa
+            : 0;
 
   const academicMarksChanged =
     academicMarksInput !== undefined &&

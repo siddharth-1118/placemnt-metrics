@@ -171,6 +171,15 @@ export function toDto(
     proofUrls = [];
   }
 
+  const rawCgpa = Number(s.cgpa || 0);
+  const s1 = Number(s.sgpaSem1 || 0);
+  const s2 = Number(s.sgpaSem2 || 0);
+  const derivedCgpa = rawCgpa > 0
+    ? rawCgpa
+    : (s1 > 0 && s2 > 0)
+      ? Math.round(((s1 + s2) / 2) * 100) / 100
+      : (s1 > 0 ? s1 : (s2 > 0 ? s2 : 0));
+
   return {
     id: s.id,
     registerNumber: s.registerNumber,
@@ -179,7 +188,7 @@ export function toDto(
     facultyAdvisor: s.facultyAdvisor,
     tenthPercent: s.tenthPercent,
     twelfthPercent: s.twelfthPercent,
-    cgpa: s.cgpa,
+    cgpa: derivedCgpa,
     sgpaSem1: s.sgpaSem1,
     sgpaSem2: s.sgpaSem2,
     githubUrl: s.githubUrl,

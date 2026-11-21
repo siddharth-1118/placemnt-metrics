@@ -16,6 +16,9 @@ interface ExportableCandidate {
   tenthPercent?: number | null;
   twelfthPercent?: number | null;
   cgpa?: number | null;
+  sgpaSem1?: number | null;
+  sgpaSem2?: number | null;
+  scoreAcademic?: number | null;
   scoreGithub?: number | null;
   scoreCoding?: number | null;
   scoreInternship?: number | null;
@@ -271,18 +274,33 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = "")
               : 0.5
       : 0;
 
+    // Ensure Degree CGPA is accurately derived (from s.cgpa or SGPAs)
+    const rawCgpa = Number(s.cgpa ?? 0);
+    const s1 = Number(s.sgpaSem1 ?? 0);
+    const s2 = Number(s.sgpaSem2 ?? 0);
+    const effectiveCgpa =
+      rawCgpa > 0
+        ? rawCgpa
+        : s1 > 0 && s2 > 0
+          ? Math.round(((s1 + s2) / 2) * 100) / 100
+          : s1 > 0
+            ? s1
+            : s2 > 0
+              ? s2
+              : 0;
+
     // Degree CGPA score (out of 5)
-    const cgpaScore = s.cgpa
-      ? s.cgpa > 9.5
-        ? 5.0
-        : s.cgpa >= 9.1
-          ? 4.0
-          : s.cgpa >= 8.6
-            ? 3.0
-            : s.cgpa >= 7.5
-              ? 2.0
-              : 1.0
-      : 0;
+    let cgpaScore = 0;
+    if (effectiveCgpa > 0) {
+      if (effectiveCgpa > 9.5) cgpaScore = 5.0;
+      else if (effectiveCgpa >= 9.1) cgpaScore = 4.0;
+      else if (effectiveCgpa >= 8.6) cgpaScore = 3.0;
+      else if (effectiveCgpa >= 7.5) cgpaScore = 2.0;
+      else cgpaScore = 1.0;
+    } else if (s.scoreAcademic && Number(s.scoreAcademic) > 0) {
+      // Deduce CGPA portion from scoreAcademic if available
+      cgpaScore = Math.max(0, Math.min(5, Math.round((Number(s.scoreAcademic) - tenthScore - twelfthScore) * 10) / 10));
+    }
 
     // Component scores (supports both Prisma flat columns and DTO scores object)
     const ghScore = Number(s.scores?.github ?? s.scoreGithub ?? 0);
@@ -327,7 +345,7 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = "")
       { value: s.facultyAdvisor || "Dr. Kaliraj G", style: "center" },
       tenthScore > 0 ? tenthScore : "",
       twelfthScore > 0 ? twelfthScore : "",
-      cgpaScore > 0 ? cgpaScore : "",
+      cgpaScore > 0 ? cgpaScore : effectiveCgpa > 0 ? 1.0 : "",
       ghScore > 0 ? ghScore : "",
       codingScore > 0 ? codingScore : "",
       internScore > 0 ? internScore : "",
@@ -546,40 +564,45 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    let students: ExportableCandidate[] | null = Array.isArray(body?.students)
-      ? body.students
-      : null;
+    const targetIds = Array.isArray(body?.students)
+      ? (body.students as { id?: string }[])
+          .map((s) => s.id)
+          .filter(Boolean) as string[]
+      : [];
 
-    if (!students || students.length === 0) {
-      students = await prisma.student.findMany({
-        where: {
-          NOT: {
-            registerNumber: { startsWith: "COORD-" },
-          },
-        },
-        orderBy: [{ registerNumber: "asc" }],
-        include: {
-          documents: {
-            select: {
-              id: true,
-              category: true,
-              fileName: true,
-              note: true,
-              status: true,
-            },
-          },
-          projectLinks: {
-            select: {
-              id: true,
-              category: true,
-              label: true,
-              url: true,
-              status: true,
-            },
-          },
-        },
-      });
+    const whereClause: any = {
+      NOT: {
+        registerNumber: { startsWith: "COORD-" },
+      },
+    };
+    if (targetIds.length > 0) {
+      whereClause.id = { in: targetIds };
     }
+
+    const students = await prisma.student.findMany({
+      where: whereClause,
+      orderBy: [{ registerNumber: "asc" }],
+      include: {
+        documents: {
+          select: {
+            id: true,
+            category: true,
+            fileName: true,
+            note: true,
+            status: true,
+          },
+        },
+        projectLinks: {
+          select: {
+            id: true,
+            category: true,
+            label: true,
+            url: true,
+            status: true,
+          },
+        },
+      },
+    });
 
     const baseUrl = getBaseUrl(req);
     const buffer = buildPlacementMatrixXlsx(students, baseUrl);

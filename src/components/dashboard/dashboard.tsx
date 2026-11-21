@@ -277,9 +277,30 @@ export function Dashboard({
         ? s.twelfthPercent >= 96 ? 2.5 : s.twelfthPercent >= 91 ? 2.0 : s.twelfthPercent >= 86 ? 1.5 : s.twelfthPercent >= 75 ? 1.0 : 0.5
         : 0;
 
-      const cgpaScore = s.cgpa
-        ? s.cgpa > 9.5 ? 5.0 : s.cgpa >= 9.1 ? 4.0 : s.cgpa >= 8.6 ? 3.0 : s.cgpa >= 7.5 ? 2.0 : 1.0
-        : 0;
+      const rawCgpa = Number(s.cgpa ?? 0);
+      const s1 = Number(s.sgpaSem1 ?? 0);
+      const s2 = Number(s.sgpaSem2 ?? 0);
+      const effectiveCgpa =
+        rawCgpa > 0
+          ? rawCgpa
+          : s1 > 0 && s2 > 0
+            ? Math.round(((s1 + s2) / 2) * 100) / 100
+            : s1 > 0
+              ? s1
+              : s2 > 0
+                ? s2
+                : 0;
+
+      let cgpaScore = 0;
+      if (effectiveCgpa > 0) {
+        if (effectiveCgpa > 9.5) cgpaScore = 5.0;
+        else if (effectiveCgpa >= 9.1) cgpaScore = 4.0;
+        else if (effectiveCgpa >= 8.6) cgpaScore = 3.0;
+        else if (effectiveCgpa >= 7.5) cgpaScore = 2.0;
+        else cgpaScore = 1.0;
+      } else if (s.scores?.academic && Number(s.scores.academic) > 0) {
+        cgpaScore = Math.max(0, Math.min(5, Math.round((Number(s.scores.academic) - tenthScore - twelfthScore) * 10) / 10));
+      }
 
       const ghScore = Number(s.scores?.github ?? 0);
       const codingScore = Number(s.scores?.coding ?? 0);

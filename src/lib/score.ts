@@ -61,9 +61,9 @@ export function clampScores(input: Partial<Record<ScoreCapKey, number>>): ScoreB
  *   CGPA:   >9.5→5 · 9.1–9.5→4 · 8.6–9→3 · 7.5–8.5→2 · <7.5→1
  */
 export function suggestAcademicScore(tenth: number, twelfth: number, cgpa: number): number {
-  const tenthB = tenth >= 96 ? 2.5 : tenth >= 91 ? 2 : tenth >= 86 ? 1.5 : tenth >= 75 ? 1 : 0.5;
-  const twelfthB = twelfth >= 96 ? 2.5 : twelfth >= 91 ? 2 : twelfth >= 86 ? 1.5 : twelfth >= 75 ? 1 : 0.5;
-  const cgpaB = cgpa > 9.5 ? 5 : cgpa >= 9.1 ? 4 : cgpa >= 8.6 ? 3 : cgpa >= 7.5 ? 2 : 1;
+  const tenthB = tenth >= 96 ? 2.5 : tenth >= 91 ? 2 : tenth >= 86 ? 1.5 : tenth >= 75 ? 1 : tenth > 0 ? 0.5 : 0;
+  const twelfthB = twelfth >= 96 ? 2.5 : twelfth >= 91 ? 2 : twelfth >= 86 ? 1.5 : twelfth >= 75 ? 1 : twelfth > 0 ? 0.5 : 0;
+  const cgpaB = cgpa > 9.5 ? 5 : cgpa >= 9.1 ? 4 : cgpa >= 8.6 ? 3 : cgpa >= 7.5 ? 2 : cgpa > 0 ? 1 : 0;
   return clamp(tenthB + twelfthB + cgpaB, SCORE_CAPS.academic);
 }
 
@@ -116,10 +116,30 @@ export async function autoScoresFor(
   // keeps its stored score until the super admin clears the override —
   // re-scrapes and recalculations never touch it.
   const useOverride = (flag: boolean) => respect && flag;
+
+  const rawCgpa = Number(student.cgpa || 0);
+  const s1 = Number(student.sgpaSem1 || 0);
+  const s2 = Number(student.sgpaSem2 || 0);
+  const effectiveCgpa = rawCgpa > 0
+    ? rawCgpa
+    : (s1 > 0 && s2 > 0)
+      ? Math.round(((s1 + s2) / 2) * 100) / 100
+      : (s1 > 0 ? s1 : (s2 > 0 ? s2 : 0));
+
+  // Self-heal: if student in DB had cgpa = 0 but S1/S2 existed, backfill immediately
+  if (rawCgpa <= 0 && effectiveCgpa > 0) {
+    prisma.student
+      .update({
+        where: { id: student.id },
+        data: { cgpa: effectiveCgpa },
+      })
+      .catch(() => {});
+  }
+
   const academic = useOverride(student.academicOverridden)
     ? student.scoreAcademic
-    : student.tenthPercent > 0 || student.twelfthPercent > 0 || student.cgpa > 0
-      ? suggestAcademicScore(student.tenthPercent, student.twelfthPercent, student.cgpa)
+    : student.tenthPercent > 0 || student.twelfthPercent > 0 || effectiveCgpa > 0
+      ? suggestAcademicScore(student.tenthPercent, student.twelfthPercent, effectiveCgpa)
       : 0;
 
   let github = 0;
