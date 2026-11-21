@@ -81,7 +81,7 @@ interface RecentData {
   recentAcSubmissionList: { id: string; title: string; titleSlug: string; timestamp: string }[];
 }
 
-export async function scrapeLeetcode(username: string): Promise<LeetcodeScrapedData> {
+async function scrapeLeetcodeOfficial(username: string): Promise<LeetcodeScrapedData> {
   const profile = await gql<ProfileData>(
     `query userProfile($userSlug: String!) {
       matchedUser(username: $userSlug) {
@@ -188,6 +188,97 @@ export async function scrapeLeetcode(username: string): Promise<LeetcodeScrapedD
     skillTags: allTags,
     recentSubmissions,
   };
+}
+
+async function scrapeLeetcodeViaMirror(username: string): Promise<LeetcodeScrapedData> {
+  // Mirror 1: Vercel-hosted fast proxy
+  try {
+    const res = await fetch(`https://leetcode-api-faisalshohag.vercel.app/${username}`, {
+      headers: { "User-Agent": UA },
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      if (data && (data.totalSolved !== undefined || data.easySolved !== undefined)) {
+        const solvedEasy = Number(data.easySolved ?? 0);
+        const solvedMedium = Number(data.mediumSolved ?? 0);
+        const solvedHard = Number(data.hardSolved ?? 0);
+        const solvedTotal = Number(data.totalSolved ?? solvedEasy + solvedMedium + solvedHard);
+        return {
+          username,
+          name: data.name || null,
+          avatarUrl: data.avatar || null,
+          profileUrl: `https://leetcode.com/u/${username}/`,
+          country: data.country || null,
+          aboutMe: data.about || null,
+          githubUrl: null,
+          ranking: data.ranking ?? null,
+          contestRating: data.contestRanking?.rating ?? null,
+          attendedContests: data.contestRanking?.attendedContestsCount ?? null,
+          topPercentage: data.contestRanking?.topPercentage ?? null,
+          solvedEasy,
+          solvedMedium,
+          solvedHard,
+          solvedTotal,
+          skillTags: [],
+          recentSubmissions: (data.recentSubmissions ?? []).slice(0, 10).map((s: any) => ({
+            title: s.title,
+            slug: s.titleSlug,
+            solvedAt: s.timestamp ? new Date(Number(s.timestamp) * 1000).toISOString() : null,
+          })),
+        };
+      }
+    }
+  } catch {
+    // mirror 1 failed -> try mirror 2
+  }
+
+  // Mirror 2: alfa-leetcode-api
+  const res2 = await fetch(`https://alfa-leetcode-api.onrender.com/userProfile/${username}`, {
+    headers: { "User-Agent": UA },
+    cache: "no-store",
+  });
+  if (!res2.ok) throw new Error(`LeetCode profile not found or unavailable for ${username}`);
+  const data2 = (await res2.json()) as any;
+  const solvedEasy = Number(data2.easySolved ?? 0);
+  const solvedMedium = Number(data2.mediumSolved ?? 0);
+  const solvedHard = Number(data2.hardSolved ?? 0);
+  const solvedTotal = Number(data2.totalSolved ?? solvedEasy + solvedMedium + solvedHard);
+  return {
+    username,
+    name: data2.name || null,
+    avatarUrl: data2.avatar || null,
+    profileUrl: `https://leetcode.com/u/${username}/`,
+    country: data2.country || null,
+    aboutMe: data2.about || null,
+    githubUrl: null,
+    ranking: data2.ranking ?? null,
+    contestRating: null,
+    attendedContests: null,
+    topPercentage: null,
+    solvedEasy,
+    solvedMedium,
+    solvedHard,
+    solvedTotal,
+    skillTags: [],
+    recentSubmissions: [],
+  };
+}
+
+export async function scrapeLeetcode(username: string): Promise<LeetcodeScrapedData> {
+  try {
+    return await scrapeLeetcodeOfficial(username);
+  } catch (err) {
+    if ((err as Error)?.message?.includes("not found")) {
+      try {
+        return await scrapeLeetcodeViaMirror(username);
+      } catch {
+        throw err;
+      }
+    }
+    // Network, 429, Cloudflare or datacenter IP block -> seamless failover to mirror
+    return await scrapeLeetcodeViaMirror(username);
+  }
 }
 
 /** Streak/active-years bonus data (optional, non-fatal if unavailable). */

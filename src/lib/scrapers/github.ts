@@ -194,9 +194,13 @@ function parseReposPage(html: string): HtmlRepo[] {
  * the rest of the data still reaches the dashboard.
  */
 async function scrapeGithubViaHtml(login: string): Promise<GithubScrapedData> {
-  const profileHtml = await ghHtml(`https://github.com/${login}`);
-
   const profileUrl = `https://github.com/${login}`;
+  const [profileHtml, reposHtml, contributionCalendar] = await Promise.all([
+    ghHtml(profileUrl),
+    ghHtml(`https://github.com/${login}?tab=repositories&type=source&page=1`).catch(() => ""),
+    fetchContributionCalendar(login).catch(() => []),
+  ]);
+
   const loginRe = new RegExp(`github\\.com/(${login.replace(/[-]/g, "\\$&")})["/]`, "i");
   if (!loginRe.test(profileHtml)) throw new Error(`GitHub profile not found: ${login}`);
 
@@ -210,20 +214,7 @@ async function scrapeGithubViaHtml(login: string): Promise<GithubScrapedData> {
     profileHtml.match(/tab=repositories[\s\S]{0,600}?title="([\d,]+)"/) ||
     profileHtml.match(/tab=repositories[\s\S]{0,600}?>([\d,.]+\s*[kKmM]?)<\/span>/);
 
-  // Owned repositories, up to 3 pages (~75+ repos) — plenty for students.
-  const repos: HtmlRepo[] = [];
-  for (let page = 1; page <= 3; page++) {
-    try {
-      const html = await ghHtml(`https://github.com/${login}?tab=repositories&type=source&page=${page}`);
-      const items = parseReposPage(html);
-      if (items.length === 0) break;
-      repos.push(...items);
-      if (items.length < 25) break;
-      await sleep(300);
-    } catch {
-      break;
-    }
-  }
+  const repos: HtmlRepo[] = reposHtml ? parseReposPage(reposHtml) : [];
 
   const totalStars = repos.reduce((s, r) => s + r.stars, 0);
   const totalForks = repos.reduce((s, r) => s + r.forks, 0);
@@ -253,7 +244,6 @@ async function scrapeGithubViaHtml(login: string): Promise<GithubScrapedData> {
       updatedAt: r.updatedAt,
     }));
 
-  const contributionCalendar = await fetchContributionCalendar(login);
   const contributionsLastYear = contributionCalendar.reduce((s, d) => s + d.count, 0);
 
   return {
@@ -277,13 +267,11 @@ async function scrapeGithubViaHtml(login: string): Promise<GithubScrapedData> {
 }
 
 async function scrapeGithubViaApi(login: string, token?: string): Promise<GithubScrapedData> {
-  const user = await ghFetch<GhUser>(`/users/${login}`, token);
-
-  // Public repos — fetch up to 100 (most students have fewer); paginate lazily.
-  const repos = await ghFetch<GhRepo[]>(
-    `/users/${login}/repos?per_page=100&sort=updated&direction=desc`,
-    token
-  );
+  const [user, repos, contributionCalendar] = await Promise.all([
+    ghFetch<GhUser>(`/users/${login}`, token),
+    ghFetch<GhRepo[]>(`/users/${login}/repos?per_page=100&sort=updated&direction=desc`, token).catch(() => []),
+    fetchContributionCalendar(login).catch(() => []),
+  ]);
 
   const owned = repos.filter((r) => !r.fork);
   const totalStars = owned.reduce((s, r) => s + r.stargazers_count, 0);
@@ -318,7 +306,6 @@ async function scrapeGithubViaApi(login: string, token?: string): Promise<Github
     .slice(0, 8)
     .map(([name, count]) => ({ name, count, pct: Math.round((count / langTotal) * 100) }));
 
-  const contributionCalendar = await fetchContributionCalendar(login);
   const contributionsLastYear = contributionCalendar.reduce((s, d) => s + d.count, 0);
 
   return {
@@ -344,23 +331,16 @@ async function scrapeGithubViaApi(login: string, token?: string): Promise<Github
 export async function scrapeGithub(login: string): Promise<GithubScrapedData> {
   const token = process.env.GITHUB_TOKEN || undefined;
 
-  // Preferred path: REST API (exact numbers). On a rate limit (shared
-  // networks exhaust the 60 req/hr anonymous quota), retry once then fall
-  // back to HTML scraping which has no API quota. 404s stay 404s — an
-  // invalid profile must not be masked by the fallback.
   try {
     return await scrapeGithubViaApi(login, token);
   } catch (err) {
     if (isNotFound(err)) throw err;
-    if (isRateLimitError(err)) {
-      await sleep(1200);
-      try {
-        return await scrapeGithubViaApi(login, token);
-      } catch (err2) {
-        if (isNotFound(err2)) throw err2;
-        return await scrapeGithubViaHtml(login);
-      }
+    // On any API failure (e.g. 403 rate limit, network error), instantly fall back to HTML scraping
+    try {
+      return await scrapeGithubViaHtml(login);
+    } catch (htmlErr) {
+      if (isNotFound(htmlErr)) throw htmlErr;
+      throw err;
     }
-    throw err;
   }
 }

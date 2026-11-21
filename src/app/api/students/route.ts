@@ -380,12 +380,13 @@ export async function POST(req: Request) {
     });
   }
 
-  // Safe bounded await (max 2.5s) so external scraper latency never hangs or crashes
-  // concurrent student submissions on serverless. Scrapes write back to DB when settled.
+  // Await the scrape jobs so results are ready and persisted before this response lands
+  // (serverless platforms freeze execution after the response). Failures are
+  // persisted on the job rows — the response always goes through.
   try {
     await Promise.race([
       enqueueScrapes(student.id, student.githubUrl, student.leetcodeUrl),
-      new Promise((resolve) => setTimeout(resolve, 2500)),
+      new Promise((resolve) => setTimeout(resolve, 8000)),
     ]);
   } catch (scrapeErr) {
     console.warn("Background scrape warning:", scrapeErr);
