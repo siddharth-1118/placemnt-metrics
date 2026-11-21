@@ -1071,9 +1071,27 @@ export function StudentDetailModal({
                   links={student.projectLinks.filter((l) => itemAllowed(l.category, "link"))}
                   allDocuments={student.documents}
                   canScore={canScore}
-                  onChanged={async () => {
-                    const res = await fetch(`/api/students/${studentId}`, { cache: "no-store" });
-                    if (res.ok) setStudent((await res.json()).student);
+                  onItemReviewed={(kind, id, status) => {
+                    setStudent((prev) => {
+                      if (!prev) return null;
+                      const reviewerName = "Coordinator";
+                      const timestamp = new Date().toISOString();
+                      if (kind === "document") {
+                        return {
+                          ...prev,
+                          documents: prev.documents.map((d) =>
+                            d.id === id ? { ...d, status, reviewedByName: reviewerName, reviewedAt: timestamp } : d
+                          ),
+                        };
+                      } else {
+                        return {
+                          ...prev,
+                          projectLinks: prev.projectLinks.map((l) =>
+                            l.id === id ? { ...l, status, reviewedByName: reviewerName, reviewedAt: timestamp } : l
+                          ),
+                        };
+                      }
+                    });
                   }}
                 />
               </section>

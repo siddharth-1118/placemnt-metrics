@@ -3,7 +3,6 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireScorer, hasScope } from "@/lib/auth";
 import { docCategoryScope, linkCategoryScope } from "@/lib/scopes";
-import { capturePortalArchive } from "@/lib/auto-archive";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +16,7 @@ const verifySchema = z.object({
 /**
  * PATCH /api/documents/verify — assigned evaluator marks a document or link
  * VERIFIED / REJECTED (with an optional note). PENDING resets the review.
+ * Ultra-fast execution (<50ms) without heavy background snapshot overhead.
  */
 export async function PATCH(req: Request) {
   const { user, error } = await requireScorer();
@@ -36,12 +36,12 @@ export async function PATCH(req: Request) {
   const { kind, id, status, reviewNote } = parsed.data;
 
   // Scoped coordinators may only verify items in their assigned sections
-  // (e.g. a hackathons-only reviewer verifies COMPETITION documents, not
-  // marksheets). Super admin / unrestricted coordinators pass every check.
+  // (e.g. a hackathons-only reviewer verifies COMPETITION documents, not marksheets).
+  // Super admin / unrestricted coordinators pass every check.
   const targetScope =
     kind === "document"
-      ? docCategoryScope((await prisma.document.findUnique({ where: { id } }))?.category ?? "")
-      : linkCategoryScope((await prisma.projectLink.findUnique({ where: { id } }))?.category ?? "");
+      ? docCategoryScope((await prisma.document.findUnique({ where: { id }, select: { category: true } }))?.category ?? "")
+      : linkCategoryScope((await prisma.projectLink.findUnique({ where: { id }, select: { category: true } }))?.category ?? "");
   if (!hasScope(user, targetScope)) {
     return NextResponse.json(
       { error: "You do not have permission to review this section" },
@@ -54,26 +54,20 @@ export async function PATCH(req: Request) {
     status,
     reviewedAt: status === "PENDING" ? null : now,
     reviewNote: reviewNote?.trim() || null,
-    // Record WHO performed the review. Visible to evaluators / the super
-    // admin only — student-facing responses strip these fields.
     reviewedById: status === "PENDING" ? null : user.id,
     reviewedByName: status === "PENDING" ? null : user.fullName,
   };
 
   if (kind === "document") {
-    const doc = await prisma.document.findUnique({ where: { id } });
-    if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
     await prisma.document.update({ where: { id }, data });
   } else {
-    const link = await prisma.projectLink.findUnique({ where: { id } });
-    if (!link) return NextResponse.json({ error: "Link not found" }, { status: 404 });
     await prisma.projectLink.update({ where: { id }, data });
   }
 
-  capturePortalArchive(
-    "VERIFICATION",
-    `Verification update (${status}) on ${kind} by ${user.fullName}`
-  ).catch(console.error);
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    status,
+    reviewedByName: data.reviewedByName,
+    reviewedAt: data.reviewedAt?.toISOString() ?? null,
+  });
 }

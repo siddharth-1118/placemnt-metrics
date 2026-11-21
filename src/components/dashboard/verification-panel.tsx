@@ -77,12 +77,14 @@ export function VerificationPanel({
   allDocuments,
   canScore = true,
   onChanged,
+  onItemReviewed,
 }: {
   documents: DocumentDto[];
   links: ProjectLinkDto[];
   allDocuments?: DocumentDto[];
   canScore?: boolean;
   onChanged?: () => void;
+  onItemReviewed?: (kind: "document" | "link", id: string, status: "VERIFIED" | "REJECTED") => void;
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +98,7 @@ export function VerificationPanel({
   ) {
     setError(null);
     setBusyId(id);
+    onItemReviewed?.(kind, id, status);
     try {
       await reviewApi(kind, id, status, note);
       onChanged?.();

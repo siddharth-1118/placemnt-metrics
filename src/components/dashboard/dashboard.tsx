@@ -100,7 +100,10 @@ export function Dashboard({
   const [activeSection, setActiveSection] = useState<ActiveSection>("STUDENTS");
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setStudents((curr) => {
+      if (!curr.length) setLoading(true);
+      return curr;
+    });
     setError(null);
     try {
       const res = await fetch("/api/students", { cache: "no-store" });

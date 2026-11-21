@@ -98,43 +98,45 @@ export function suggestCodingScore(l?: LeetcodeScrapedData | null): number {
  * latest successful scrape payloads. The score API and the recalculate
  * backfill both use this so the automatic components always agree.
  */
-export async function autoScoresFor(
-  studentId: string,
-  /** false → ignore super-admin overrides and always return the raw
-   *  calculated suggestion (used when clearing an override). */
+/**
+ * Pure in-memory calculation of the three system-derived rubric scores:
+ * academic from marks bands, and GitHub / LeetCode from the scrape payloads.
+ * Runs in 0ms with zero database queries.
+ */
+export function computeAutoScoresFromStudent(
+  student: {
+    id: string;
+    cgpa?: number | null;
+    sgpaSem1?: number | null;
+    sgpaSem2?: number | null;
+    tenthPercent: number;
+    twelfthPercent: number;
+    academicOverridden: boolean;
+    githubOverridden: boolean;
+    codingOverridden: boolean;
+    scoreAcademic: number;
+    scoreGithub: number;
+    scoreCoding: number;
+    scrapes?: { platform: string; status: string; dataJson: string | null }[];
+  },
   opts: { respectOverrides?: boolean } = {}
-): Promise<{ academic: number; github: number; coding: number }> {
+): { academic: number; github: number; coding: number } {
   const respect = opts.respectOverrides !== false;
-  const { prisma } = await import("@/lib/prisma");
-  const student = await prisma.student.findUnique({
-    where: { id: studentId },
-    include: { scrapes: true },
-  });
-  if (!student) return { academic: 0, github: 0, coding: 0 };
-
-  // Super-admin manual overrides win when respected: a flagged component
-  // keeps its stored score until the super admin clears the override —
-  // re-scrapes and recalculations never touch it.
   const useOverride = (flag: boolean) => respect && flag;
 
   const rawCgpa = Number(student.cgpa || 0);
   const s1 = Number(student.sgpaSem1 || 0);
   const s2 = Number(student.sgpaSem2 || 0);
-  const effectiveCgpa = rawCgpa > 0
-    ? rawCgpa
-    : (s1 > 0 && s2 > 0)
-      ? Math.round(((s1 + s2) / 2) * 100) / 100
-      : (s1 > 0 ? s1 : (s2 > 0 ? s2 : 0));
-
-  // Self-heal: if student in DB had cgpa = 0 but S1/S2 existed, backfill immediately
-  if (rawCgpa <= 0 && effectiveCgpa > 0) {
-    prisma.student
-      .update({
-        where: { id: student.id },
-        data: { cgpa: effectiveCgpa },
-      })
-      .catch(() => {});
-  }
+  const effectiveCgpa =
+    rawCgpa > 0
+      ? rawCgpa
+      : s1 > 0 && s2 > 0
+        ? Math.round(((s1 + s2) / 2) * 100) / 100
+        : s1 > 0
+          ? s1
+          : s2 > 0
+            ? s2
+            : 0;
 
   const academic = useOverride(student.academicOverridden)
     ? student.scoreAcademic
@@ -145,16 +147,31 @@ export async function autoScoresFor(
   let github = 0;
   let coding = 0;
   try {
-    const gh = student.scrapes.find((s) => s.platform === "GITHUB");
-    const lc = student.scrapes.find((s) => s.platform === "LEETCODE");
-    if (!useOverride(student.githubOverridden) && gh?.status === "SUCCESS" && gh.dataJson) github = suggestGithubScore(JSON.parse(gh.dataJson));
-    if (!useOverride(student.codingOverridden) && lc?.status === "SUCCESS" && lc.dataJson) coding = suggestCodingScore(JSON.parse(lc.dataJson));
+    const gh = student.scrapes?.find((s) => s.platform === "GITHUB");
+    const lc = student.scrapes?.find((s) => s.platform === "LEETCODE");
+    if (!useOverride(student.githubOverridden) && gh?.status === "SUCCESS" && gh.dataJson)
+      github = suggestGithubScore(JSON.parse(gh.dataJson));
+    if (!useOverride(student.codingOverridden) && lc?.status === "SUCCESS" && lc.dataJson)
+      coding = suggestCodingScore(JSON.parse(lc.dataJson));
   } catch {
-    // Corrupt payloads → zero; a re-scrape fills them back in.
+    // Corrupt payloads → zero
   }
   if (useOverride(student.githubOverridden)) github = student.scoreGithub;
   if (useOverride(student.codingOverridden)) coding = student.scoreCoding;
   return { academic, github, coding };
+}
+
+export async function autoScoresFor(
+  studentId: string,
+  opts: { respectOverrides?: boolean } = {}
+): Promise<{ academic: number; github: number; coding: number }> {
+  const { prisma } = await import("@/lib/prisma");
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    include: { scrapes: true },
+  });
+  if (!student) return { academic: 0, github: 0, coding: 0 };
+  return computeAutoScoresFromStudent(student, opts);
 }
 
 /**

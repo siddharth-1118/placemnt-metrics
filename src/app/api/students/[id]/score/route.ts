@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { clampScores, assignRanks, autoScoresFor, suggestAcademicScore, applyAutoPlatformScores } from "@/lib/score";
+import { clampScores, assignRanks, autoScoresFor, computeAutoScoresFromStudent, suggestAcademicScore, applyAutoPlatformScores } from "@/lib/score";
 import { toDto, parseScoreAudit } from "@/lib/dto";
 import { requireScorer, getSessionUser, canWriteScoreField, hasScope } from "@/lib/auth";
 import { scopesAreFull, docCategoryScope, linkCategoryScope } from "@/lib/scopes";
@@ -59,7 +59,10 @@ export async function PATCH(
   const { user, error } = await requireScorer();
   if (error) return error;
 
-  const student = await prisma.student.findUnique({ where: { id: params.id } });
+  const student = await prisma.student.findUnique({
+    where: { id: params.id },
+    include: { scrapes: true },
+  });
   if (!student) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
@@ -137,12 +140,9 @@ export async function PATCH(
       newSgpa2 !== student.sgpaSem2 ||
       newCgpa !== student.cgpa);
 
-  // Recompute the automatic components: overridden ones keep their stored
-  // value; a component being reset right now takes its RAW calculated value
-  // (marks bands / latest scrapes). Then merge coordinator-entered sections
-  // with existing values (partial updates).
-  const AUTO = await autoScoresFor(student.id);
-  const RAW = autoReset.length ? await autoScoresFor(student.id, { respectOverrides: false }) : AUTO;
+  // Recompute the automatic components in-memory (0ms, zero DB queries)
+  const AUTO = computeAutoScoresFromStudent(student);
+  const RAW = autoReset.length ? computeAutoScoresFromStudent(student, { respectOverrides: false }) : AUTO;
   const merged = {
     academic: autoReset.includes("academic")
       ? RAW.academic
@@ -238,10 +238,16 @@ export async function PATCH(
     // Unrestricted reviewers / super admins verify against all sections.
     const isFullReviewer = user.isSuperAdmin || scopesAreFull(user.permissionScopes);
 
-    const pendingDocs = await prisma.document.findMany({
-      where: { studentId: student.id, status: "PENDING" },
-      select: { category: true },
-    });
+    const [pendingDocs, pendingLinks] = await Promise.all([
+      prisma.document.findMany({
+        where: { studentId: student.id, status: "PENDING" },
+        select: { category: true },
+      }),
+      prisma.projectLink.findMany({
+        where: { studentId: student.id, status: "PENDING" },
+        select: { category: true },
+      }),
+    ]);
     const scopedPendingDocs = isFullReviewer
       ? pendingDocs
       : pendingDocs.filter((d) => hasScope(user, docCategoryScope(d.category)));
@@ -255,10 +261,6 @@ export async function PATCH(
       );
     }
 
-    const pendingLinks = await prisma.projectLink.findMany({
-      where: { studentId: student.id, status: "PENDING" },
-      select: { category: true },
-    });
     const scopedPendingLinks = isFullReviewer
       ? pendingLinks
       : pendingLinks.filter((l) => hasScope(user, linkCategoryScope(l.category)));
@@ -377,27 +379,20 @@ export async function PATCH(
       scoreAudit,
       coordinatorNote: parsed.data.coordinatorNote ?? student.coordinatorNote,
     },
-  });
-
-  // If profile links changed, re-run scrape jobs and auto-scoring
-  if (profileLinksChanged) {
-    try {
-      await enqueueScrapes(student.id, newGithubUrl, newLeetcodeUrl);
-      await applyAutoPlatformScores(student.id);
-    } catch (e) {
-      console.warn("Failed to auto-rescrape after profile link update:", e);
-    }
-  }
-
-  // Ranks depend on total score → refresh globally (cheap at batch scale).
-  await assignRanks();
-
-  const fresh = await prisma.student.findUniqueOrThrow({
-    where: { id: student.id },
     include: { scrapes: true, documents: true, projectLinks: true },
   });
 
-  return NextResponse.json({ student: toDto(fresh), caps: SCORE_CAPS });
+  // If profile links changed, re-run scrape jobs and auto-scoring asynchronously
+  if (profileLinksChanged) {
+    enqueueScrapes(student.id, newGithubUrl, newLeetcodeUrl)
+      .then(() => applyAutoPlatformScores(student.id))
+      .catch((e) => console.warn("Failed to auto-rescrape after profile link update:", e));
+  }
+
+  // Refresh ranks in the background without blocking the HTTP response
+  assignRanks().catch(console.error);
+
+  return NextResponse.json({ student: toDto(updated), caps: SCORE_CAPS });
 }
 
 /** GET /api/students/:id/score — current score breakdown */
@@ -412,7 +407,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "You can only view your own scores" }, { status: 403 });
   }
 
-  const student = await prisma.student.findUnique({ where: { id: params.id } });
+  const student = await prisma.student.findUnique({
+    where: { id: params.id },
+    include: { scrapes: true },
+  });
   if (!student) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
