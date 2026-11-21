@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, Clock, Code2, ExternalLink, Github, GraduationCap, Mail, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X, Loader2, Pencil,
+  AlertTriangle, CheckCircle2, Clock, Code2, ExternalLink, Github, GraduationCap, Mail, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X, Loader2, Pencil, Lock, Unlock, KeyRound,
 } from "lucide-react";
 import { Button, Input, Label, Badge, Card, CardContent } from "@/components/ui";
 import { GithubCard } from "@/components/dashboard/github-card";
@@ -20,6 +20,11 @@ import {
 } from "@/lib/scopes";
 import { auditStudentDocuments } from "@/lib/categories";
 import { fmtPct, fmtNumber, timeAgo } from "@/lib/utils";
+import {
+  UNLOCKABLE_SECTIONS_DEF,
+  getUnlockedSectionLabels,
+  type UnlockableSection,
+} from "@/lib/student-unlock";
 
 const SCORE_FIELDS: { key: keyof ScoreBreakdown & string; label: string; cap: number; hint: string }[] = [
   { key: "academic", label: "Academic (10th+12th+CGPA)", cap: SCORE_CAPS.academic, hint: "Bands: 10th & 12th 2.5 each · CGPA up to 5" },
@@ -261,6 +266,18 @@ export function StudentDetailModal({
   const [rescraping, setRescraping] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
 
+  // Student Edit Unlock state (Super Admin & Evaluators)
+  const [unlockInfo, setUnlockInfo] = useState<{
+    sections: string[];
+    reason?: string;
+    unlockedBy?: string;
+    unlockedAt?: string;
+  } | null>(null);
+  const [unlockLoading, setUnlockLoading] = useState(false);
+  const [unlockReason, setUnlockReason] = useState("");
+  const [selectedUnlockSections, setSelectedUnlockSections] = useState<string[]>([]);
+  const [unlockFlash, setUnlockFlash] = useState<string | null>(null);
+
   useEffect(() => {
     let alive = true;
     async function load() {
@@ -302,6 +319,22 @@ export function StudentDetailModal({
           leetcodeUrl: body.student.leetcodeUrl ?? "",
         });
         setEditingLinks(false);
+
+        // Load active unlock status
+        fetch(`/api/students/${studentId}/unlock`, { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((ub) => {
+            if (!alive) return;
+            if (ub?.unlock) {
+              setUnlockInfo(ub.unlock);
+              setSelectedUnlockSections(ub.unlock.sections || []);
+              setUnlockReason(ub.unlock.reason || "");
+            } else {
+              setUnlockInfo(null);
+              setSelectedUnlockSections([]);
+            }
+          })
+          .catch(() => undefined);
       } catch (e) {
         if (alive) setError((e as Error).message);
       } finally {
@@ -615,6 +648,62 @@ export function StudentDetailModal({
     }
   }
 
+  async function handleSaveUnlock(sectionsToSave?: string[]) {
+    const secs = sectionsToSave ?? selectedUnlockSections;
+    if (secs.length === 0) {
+      return handleRevokeUnlock();
+    }
+    setUnlockLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/students/${studentId}/unlock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sections: secs,
+          reason: unlockReason,
+          notify: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to update edit permissions");
+      setUnlockInfo(data.unlock);
+      setSelectedUnlockSections(data.unlock.sections);
+      setUnlockFlash("Edit access permissions saved successfully!");
+      setTimeout(() => setUnlockFlash(null), 3000);
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setUnlockLoading(false);
+    }
+  }
+
+  async function handleRevokeUnlock() {
+    setUnlockLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/students/${studentId}/unlock`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to revoke edit access");
+      setUnlockInfo(null);
+      setSelectedUnlockSections([]);
+      setUnlockFlash("Student locked — edit access revoked.");
+      setTimeout(() => setUnlockFlash(null), 3000);
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setUnlockLoading(false);
+    }
+  }
+
+  async function handleUnlockAll() {
+    await handleSaveUnlock(["ALL"]);
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-2 sm:p-4" role="dialog" aria-modal="true">
       <div className="my-2 w-full max-w-4xl overflow-hidden rounded-md border border-[#ded9ce] bg-white shadow-lg dark:border-[#262f3c] dark:bg-[#1b222c] sm:my-6">
@@ -706,6 +795,162 @@ export function StudentDetailModal({
 
           {student && (
             <>
+              {/* Student Edit Permissions & Section Unlock (Super Admin & Evaluators) */}
+              {(isSuperAdmin || canScore) && (
+                <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                        {unlockInfo && unlockInfo.sections.length > 0 ? (
+                          <Unlock className="h-4 w-4" />
+                        ) : (
+                          <Lock className="h-4 w-4" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-[#1c2024] dark:text-white flex items-center gap-1.5">
+                          Student Edit Access &amp; Section Unlocking
+                          {isSuperAdmin && (
+                            <Badge variant="warning" className="text-[10px] py-0">Super Admin Control</Badge>
+                          )}
+                        </h3>
+                        <p className="text-xs text-[#5c6470] dark:text-[#94a3b8]">
+                          Grant this student permission to edit specific profile fields, academic marks, documents, or links.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {unlockInfo && unlockInfo.sections.length > 0 ? (
+                        <Badge variant="success" className="gap-1 text-xs">
+                          <Unlock className="h-3 w-3" /> Edit Access Active
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1 text-xs text-[#5c6470]">
+                          <Lock className="h-3 w-3" /> Profile Locked
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {unlockFlash && (
+                    <div className="mt-2.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-3 py-1.5 text-xs text-emerald-800 dark:text-emerald-300 font-medium">
+                      ✓ {unlockFlash}
+                    </div>
+                  )}
+
+                  {unlockInfo && unlockInfo.sections.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-900 dark:text-emerald-200">
+                      <p>
+                        <strong>Active Unlocked Sections:</strong>{" "}
+                        <span className="font-semibold underline">
+                          {getUnlockedSectionLabels(unlockInfo.sections)}
+                        </span>
+                        {unlockInfo.unlockedBy && (
+                          <span> · Granted by <strong>{unlockInfo.unlockedBy}</strong></span>
+                        )}
+                        {unlockInfo.reason && (
+                          <span> · Note: &quot;{unlockInfo.reason}&quot;</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Section selection checkboxes */}
+                  <div className="mt-3">
+                    <Label className="text-xs font-semibold text-[#1c2024] dark:text-white">
+                      Select sections to unlock for this student:
+                    </Label>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {UNLOCKABLE_SECTIONS_DEF.map((sec) => {
+                        const isChecked = selectedUnlockSections.includes(sec.key) || selectedUnlockSections.includes("ALL");
+                        return (
+                          <label
+                            key={sec.key}
+                            className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                              isChecked
+                                ? "border-emerald-500 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 font-medium"
+                                : "border-[#e2ded5] bg-white text-[#1c2024] hover:bg-stone-50 dark:border-[#262f3c] dark:bg-[#161c24] dark:text-white"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (sec.key === "ALL") {
+                                  setSelectedUnlockSections(e.target.checked ? ["ALL"] : []);
+                                } else {
+                                  let updated = selectedUnlockSections.filter((k) => k !== "ALL");
+                                  if (e.target.checked) {
+                                    updated = [...updated, sec.key];
+                                  } else {
+                                    updated = updated.filter((k) => k !== sec.key);
+                                  }
+                                  setSelectedUnlockSections(updated);
+                                }
+                              }}
+                              className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <div>
+                              <div className="font-semibold">{sec.label}</div>
+                              <div className="mt-0.5 text-[10px] text-[#5c6470] dark:text-[#94a3b8] leading-tight">
+                                {sec.description}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Optional note / reason + action buttons */}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <Input
+                      placeholder="Optional reason for unlock (e.g. Allowed to correct 12th marks and re-upload marksheet)"
+                      value={unlockReason}
+                      onChange={(e) => setUnlockReason(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleUnlockAll}
+                        disabled={unlockLoading}
+                        variant="outline"
+                        className="h-8 text-xs gap-1 border-emerald-600 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500 dark:text-emerald-400"
+                        title="Grant complete edit access to all sections with one click"
+                      >
+                        ⚡ Unlock All
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleSaveUnlock()}
+                        disabled={unlockLoading || selectedUnlockSections.length === 0}
+                        className="h-8 text-xs gap-1 bg-[#165b33] text-white hover:bg-[#124929]"
+                      >
+                        {unlockLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                        <span>Save Permissions</span>
+                      </Button>
+                      {unlockInfo && unlockInfo.sections.length > 0 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleRevokeUnlock}
+                          disabled={unlockLoading}
+                          variant="destructive"
+                          className="h-8 text-xs gap-1"
+                          title="Revoke edit access and lock all sections"
+                        >
+                          <Lock className="h-3.5 w-3.5" />
+                          <span>Lock Student</span>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              )}
+
               {/* Full student profile */}
               <section className="rounded-xl border p-4">
                 <div className="mb-3 flex items-center gap-2">

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { toDto, redactReviewers } from "@/lib/dto";
 import { getSessionUser } from "@/lib/auth";
+import { getStudentUnlock } from "@/lib/student-unlock";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ export async function GET() {
   // the reviewer's name, the verifier's name, or the score-entry audit.
   const dto = toDto(student);
   const canSeeReviewer = user.canViewSubmissions;
+  const unlock = await getStudentUnlock(user.id);
   return NextResponse.json({
     student: {
       ...dto,
@@ -34,6 +36,7 @@ export async function GET() {
       scoreAudit: canSeeReviewer ? dto.scoreAudit : [],
       documents: redactReviewers(dto.documents, canSeeReviewer),
       projectLinks: redactReviewers(dto.projectLinks, canSeeReviewer),
+      unlock,
     },
   });
 }

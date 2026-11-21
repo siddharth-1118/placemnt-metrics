@@ -11,9 +11,12 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
+  Unlock,
+  Lock,
 } from "lucide-react";
 import { Button, Input, Label, Badge } from "@/components/ui";
 import type { StudentDto } from "@/lib/types";
+import { getUnlockedSectionLabels } from "@/lib/student-unlock";
 
 type FieldErrors = Record<string, string>;
 
@@ -49,6 +52,12 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
   const [hasProfile, setHasProfile] = useState(false);
   /** True when academic marks/marksheets have already been verified by a coordinator. */
   const [isAcademicVerified, setIsAcademicVerified] = useState(false);
+  /** Active unlock record granted by Super Admin. */
+  const [unlockInfo, setUnlockInfo] = useState<{
+    sections: string[];
+    reason?: string;
+    unlockedBy?: string;
+  } | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/login")
@@ -81,6 +90,9 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
         const num = (v: unknown, prev: string) =>
           v === null || v === undefined || v === "" ? prev : String(v);
         setHasProfile(true);
+        if (s.unlock) {
+          setUnlockInfo(s.unlock);
+        }
 
         const acVer =
           s.status === "VERIFIED" ||
@@ -313,8 +325,42 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
     );
   }
 
+  const isAllUnlocked = unlockInfo?.sections?.includes("ALL") ?? false;
+  const isProfileUnlocked = isAllUnlocked || (unlockInfo?.sections?.includes("PROFILE") ?? false);
+  const isAcademicUnlocked = isAllUnlocked || (unlockInfo?.sections?.includes("ACADEMIC") ?? false);
+  const isCodingUnlocked = isAllUnlocked || (unlockInfo?.sections?.includes("CODING") ?? false);
+  const hasActiveUnlock = isAllUnlocked || (unlockInfo?.sections?.length ?? 0) > 0;
+  const academicLocked = isAcademicVerified && !isAcademicUnlocked;
+
   return (
     <form onSubmit={onSubmit} className="space-y-4 text-left" noValidate>
+      {hasActiveUnlock && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-900 dark:text-emerald-200">
+          <div className="flex items-start gap-3">
+            <span className="text-xl">🔓</span>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
+                Profile Edit Access Granted by Super Admin
+              </h3>
+              <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-400">
+                You have permission to edit:{" "}
+                <strong className="underline">
+                  {getUnlockedSectionLabels(unlockInfo?.sections)}
+                </strong>
+                {unlockInfo?.unlockedBy && (
+                  <span> (Granted by {unlockInfo.unlockedBy})</span>
+                )}
+                {unlockInfo?.reason && (
+                  <span> · Note: &quot;{unlockInfo.reason}&quot;</span>
+                )}
+              </p>
+              <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                Make your desired updates below and click <strong>&quot;Update Placement Profile&quot;</strong> to save.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       {topError && (
         <div className="flex items-center gap-2 rounded border border-[#f8c4c4] bg-[#fdeded] p-3 text-xs text-[#a82424] dark:border-[#5e2626] dark:bg-[#3d1818] dark:text-[#f38d8d]">
           <AlertCircle className="h-4 w-4 shrink-0" />
@@ -346,15 +392,27 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. RA2211003010001"
               value={form.registerNumber}
               onChange={set("registerNumber")}
-              readOnly={hasProfile || !!sessionInfo}
-              title={hasProfile || !!sessionInfo ? "Locked — register number cannot be changed" : undefined}
-              className={`font-mono uppercase text-xs h-8 ${hasProfile || !!sessionInfo ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
+              readOnly={(hasProfile || !!sessionInfo) && !isProfileUnlocked}
+              title={
+                (hasProfile || !!sessionInfo) && !isProfileUnlocked
+                  ? "Locked — register number cannot be changed without Super Admin access"
+                  : undefined
+              }
+              className={`font-mono uppercase text-xs h-8 ${
+                (hasProfile || !!sessionInfo) && !isProfileUnlocked
+                  ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900"
+                  : ""
+              }`}
             />
-            {(hasProfile || !!sessionInfo) && (
+            {(hasProfile || !!sessionInfo) && !isProfileUnlocked ? (
               <p className="mt-1 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
                 🔒 Locked — University register number is a permanent identifier and cannot be changed.
               </p>
-            )}
+            ) : isProfileUnlocked ? (
+              <p className="mt-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                🔓 Unlocked by Super Admin — you may edit your register number.
+              </p>
+            ) : null}
           </Field>
 
           <Field label="Full Name *" error={errors.fullName}>
@@ -372,15 +430,27 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="you@srmist.edu.in"
               value={form.email}
               onChange={set("email")}
-              readOnly={hasProfile || !!sessionInfo}
-              title={hasProfile || !!sessionInfo ? "Locked — registered email cannot be changed" : undefined}
-              className={`text-xs h-8 ${hasProfile || !!sessionInfo ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
+              readOnly={(hasProfile || !!sessionInfo) && !isProfileUnlocked}
+              title={
+                (hasProfile || !!sessionInfo) && !isProfileUnlocked
+                  ? "Locked — registered email cannot be changed without Super Admin access"
+                  : undefined
+              }
+              className={`text-xs h-8 ${
+                (hasProfile || !!sessionInfo) && !isProfileUnlocked
+                  ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900"
+                  : ""
+              }`}
             />
-            {(hasProfile || !!sessionInfo) && (
+            {(hasProfile || !!sessionInfo) && !isProfileUnlocked ? (
               <p className="mt-1 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
                 🔒 Locked — Official student email is locked to your account.
               </p>
-            )}
+            ) : isProfileUnlocked ? (
+              <p className="mt-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                🔓 Unlocked by Super Admin — you may edit your registered email.
+              </p>
+            ) : null}
           </Field>
 
           <Field label="Faculty Advisor (Optional)" error={errors.facultyAdvisor}>
@@ -404,11 +474,15 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
             <p className="mt-0.5 text-[11px] text-[#5c6470] dark:text-[#94a3b8]">
               Evaluated strictly on the 10-mark official placement academic standard.
             </p>
-            {isAcademicVerified && (
+            {isAcademicUnlocked ? (
+              <p className="mt-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                🔓 Academic Records unlocked for editing by Super Admin.
+              </p>
+            ) : isAcademicVerified ? (
               <p className="mt-1 text-[11px] font-semibold text-[#165b33] dark:text-[#78d69f]">
                 🔒 Verified by Coordinator — Marks are locked and cannot be edited. Contact your coordinator if a revision is needed.
               </p>
-            )}
+            ) : null}
           </div>
           <span className="rounded border border-[#b8ddc4] bg-[#eaf4ed] px-2 py-0.5 text-xs font-semibold text-[#165b33] dark:border-[#215736] dark:bg-[#133822] dark:text-[#78d69f]">
             Estimated Academic Score: {estAcademicScore} / 10.0 M
@@ -429,8 +503,8 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. 95.0"
               value={form.tenthPercent}
               onChange={set("tenthPercent")}
-              readOnly={isAcademicVerified}
-              className={`text-xs h-8 ${isAcademicVerified ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
+              readOnly={academicLocked}
+              className={`text-xs h-8 ${academicLocked ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
           </Field>
 
@@ -447,8 +521,8 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. 94.0"
               value={form.twelfthPercent}
               onChange={set("twelfthPercent")}
-              readOnly={isAcademicVerified}
-              className={`text-xs h-8 ${isAcademicVerified ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
+              readOnly={academicLocked}
+              className={`text-xs h-8 ${academicLocked ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
           </Field>
 
@@ -465,8 +539,8 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. 8.75"
               value={form.sgpaSem1}
               onChange={set("sgpaSem1")}
-              readOnly={isAcademicVerified}
-              className={`text-xs h-8 ${isAcademicVerified ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
+              readOnly={academicLocked}
+              className={`text-xs h-8 ${academicLocked ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
           </Field>
 
@@ -483,8 +557,8 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               placeholder="e.g. 9.10"
               value={form.sgpaSem2}
               onChange={set("sgpaSem2")}
-              readOnly={isAcademicVerified}
-              className={`text-xs h-8 ${isAcademicVerified ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
+              readOnly={academicLocked}
+              className={`text-xs h-8 ${academicLocked ? "opacity-75 cursor-not-allowed bg-stone-100 dark:bg-stone-900" : ""}`}
             />
           </Field>
         </div>
@@ -588,7 +662,7 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
       <div className="space-y-3 rounded-md border border-[#e2ded5] bg-white p-4 dark:border-[#262f3c] dark:bg-[#1b222c]">
         <Button
           type="submit"
-          disabled={submitting || locked}
+          disabled={submitting || (locked && !hasActiveUnlock)}
           className="w-full bg-[#165b33] text-white hover:bg-[#124929] h-9 text-xs font-semibold shadow-sm"
         >
           {submitting ? (
@@ -596,7 +670,7 @@ export function SubmitForm({ locked = false }: { locked?: boolean }) {
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               <span>Submitting &amp; Calculating Matrix Score…</span>
             </>
-          ) : locked ? (
+          ) : locked && !hasActiveUnlock ? (
             "Submissions closed"
           ) : (
             <span>Submit Profile &amp; Calculate Placement Score</span>

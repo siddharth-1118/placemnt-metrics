@@ -17,6 +17,7 @@ import {
   Send,
   Mail,
   Cloud,
+  Unlock,
 } from "lucide-react";
 import { Badge, Button, Input } from "@/components/ui";
 import { StudentDetailModal } from "@/components/dashboard/student-detail-modal";
@@ -98,6 +99,7 @@ export function Dashboard({
   const [exportBusy, setExportBusy] = useState(false);
   const [oneDriveModalOpen, setOneDriveModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<ActiveSection>("STUDENTS");
+  const [activeUnlocks, setActiveUnlocks] = useState<Record<string, any>>({});
 
   const load = useCallback(async () => {
     setStudents((curr) => {
@@ -117,6 +119,13 @@ export function Dashboard({
       }
       const data = await res.json();
       setStudents(data.students ?? []);
+
+      fetch("/api/students/unlock-batch")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b) => {
+          if (b?.unlocks) setActiveUnlocks(b.unlocks);
+        })
+        .catch(() => undefined);
     } catch {
       setError("Network connection error. Could not reach server.");
     } finally {
@@ -1366,9 +1375,33 @@ export function Dashboard({
                           const { finalVerifier, sectionReviewers } = getStudentReviewers(s);
                           return (
                             <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <Badge
+                                  variant={
+                                    s.status === "VERIFIED"
+                                      ? "success"
+                                      : sectionReviewers.length > 0
+                                        ? "warning"
+                                        : "outline"
+                                  }
+                                >
+                                  {s.status === "VERIFIED"
+                                    ? "Verified"
+                                    : sectionReviewers.length > 0
+                                      ? "In Review"
+                                      : "Pending"}
+                                </Badge>
+                                {activeUnlocks[s.id] && (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 px-1 py-0.5 text-[9px] font-bold text-emerald-800 dark:text-emerald-300"
+                                    title="Edit Access Granted by Super Admin"
+                                  >
+                                    <Unlock className="h-2.5 w-2.5" /> Unlocked
+                                  </span>
+                                )}
+                              </div>
                               {s.status === "VERIFIED" ? (
                                 <>
-                                  <Badge variant="success">Verified</Badge>
                                   {finalVerifier && (
                                     <div
                                       className="text-[11px] font-medium leading-tight text-[#165b33] dark:text-[#78d69f]"
@@ -1390,26 +1423,16 @@ export function Dashboard({
                               ) : (
                                 <>
                                   {sectionReviewers.length > 0 ? (
-                                    <>
-                                      <Badge variant="warning" className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300">
-                                        In Review
-                                      </Badge>
-                                      <div
-                                        className="text-[11px] leading-tight text-[#5c6470] dark:text-[#94a3b8]"
-                                        title={`Coordinators who reviewed sections: ${sectionReviewers.join(", ")}`}
-                                      >
-                                        Reviewed: <span className="font-medium text-[#1c2024] dark:text-white">{sectionReviewers.slice(0, 2).join(", ")}{sectionReviewers.length > 2 ? ` +${sectionReviewers.length - 2}` : ""}</span>
-                                      </div>
-                                    </>
+                                    <div
+                                      className="text-[11px] leading-tight text-[#5c6470] dark:text-[#94a3b8]"
+                                      title={`Coordinators who reviewed sections: ${sectionReviewers.join(", ")}`}
+                                    >
+                                      Reviewed: <span className="font-medium text-[#1c2024] dark:text-white">{sectionReviewers.slice(0, 2).join(", ")}{sectionReviewers.length > 2 ? ` +${sectionReviewers.length - 2}` : ""}</span>
+                                    </div>
                                   ) : (
-                                    <>
-                                      <Badge variant="outline" className="text-stone-500 border-stone-300 dark:border-stone-700">
-                                        Pending
-                                      </Badge>
-                                      <div className="text-[10px] text-[#5c6470] dark:text-[#94a3b8]">
-                                        Awaiting review
-                                      </div>
-                                    </>
+                                    <div className="text-[10px] text-[#5c6470] dark:text-[#94a3b8]">
+                                      Awaiting review
+                                    </div>
                                   )}
                                 </>
                               )}

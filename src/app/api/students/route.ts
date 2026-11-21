@@ -12,6 +12,7 @@ import {
   filterStudentDtoForUser,
 } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
+import { isSectionUnlocked } from "@/lib/student-unlock";
 import type { StudentDto } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -125,7 +126,14 @@ export async function POST(req: Request) {
     // or resubmit a profile (evaluators bypass so they can still fix data).
     const user = await getSessionUser();
     const isEvaluator = user?.canViewSubmissions ?? false;
-    if (!isEvaluator && (await isSubmissionsLocked())) {
+    const isStudentUnlocked = user
+      ? (await isSectionUnlocked(user.id, "PROFILE")) ||
+        (await isSectionUnlocked(user.id, "ACADEMIC")) ||
+        (await isSectionUnlocked(user.id, "CODING")) ||
+        (await isSectionUnlocked(user.id, "ALL"))
+      : false;
+
+    if (!isEvaluator && !isStudentUnlocked && (await isSubmissionsLocked())) {
       return NextResponse.json(
         { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
         { status: 423 }
@@ -236,8 +244,11 @@ export async function POST(req: Request) {
           : null
     : null;
   if (ownRecord) {
-    data.email = ownRecord.email;
-    data.registerNumber = ownRecord.registerNumber;
+    const isProfileUnlocked = await isSectionUnlocked(ownRecord.id, "PROFILE");
+    if (!isProfileUnlocked) {
+      data.email = ownRecord.email;
+      data.registerNumber = ownRecord.registerNumber;
+    }
     if (existing?.id !== ownRecord.id) {
       // The payload carried a different identity — still write to the
       // student's own record instead of creating a new one.
@@ -267,7 +278,8 @@ export async function POST(req: Request) {
         status: "VERIFIED",
       },
     });
-    if (verifiedAcademicDocs > 0 && !isEvaluator) {
+    const isAcademicUnlocked = await isSectionUnlocked(existing.id, "ACADEMIC");
+    if (verifiedAcademicDocs > 0 && !isEvaluator && !isAcademicUnlocked) {
       // Academic records are verified by coordinator — retain stored verified marks
       data.tenthPercent = existing.tenthPercent;
       data.twelfthPercent = existing.twelfthPercent;

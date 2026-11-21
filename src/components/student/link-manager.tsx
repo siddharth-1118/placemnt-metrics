@@ -6,6 +6,7 @@ import {
   ExternalLink,
   Loader2,
   Lock,
+  Unlock,
   Plus,
   Trash2,
   CheckCircle2,
@@ -61,6 +62,10 @@ export function LinkManager({ onChanged, locked = false }: { onChanged?: () => v
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [unlockInfo, setUnlockInfo] = useState<{
+    sections: string[];
+    reason?: string;
+  } | null>(null);
 
   async function load() {
     try {
@@ -68,6 +73,7 @@ export function LinkManager({ onChanged, locked = false }: { onChanged?: () => v
       if (res.ok) {
         const b = await res.json();
         setLinks(b.projectLinks ?? []);
+        if (b.unlock) setUnlockInfo(b.unlock);
       }
     } catch {
       /* transient */
@@ -139,50 +145,67 @@ export function LinkManager({ onChanged, locked = false }: { onChanged?: () => v
           </div>
         )}
 
-        {locked && (
-          <div className="flex items-center gap-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600">
-            <Lock className="h-3.5 w-3.5" /> Adding links is closed by coordinator
-          </div>
-        )}
+        {(() => {
+          const linksUnlocked = unlockInfo?.sections?.includes("PROJECT_LINKS") || unlockInfo?.sections?.includes("ALL");
+          const effectiveLocked = locked && !linksUnlocked;
+          return (
+            <>
+              {linksUnlocked && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2 text-xs font-medium text-emerald-800 dark:text-emerald-300">
+                  <Unlock className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>
+                    🔓 <strong>Project Links Unlocked by Super Admin:</strong> You have permission to add, edit, and delete links.
+                  </span>
+                </div>
+              )}
 
-        {/* Input bar */}
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,2fr)_auto]">
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2.5 text-xs text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
-          >
-            {LINK_CATEGORIES.map((c) => (
-              <option key={c.key} value={c.key}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-          <Input
-            placeholder="Project Title"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            disabled={locked}
-            className="h-8 text-xs"
-          />
-          <Input
-            placeholder="https://..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            disabled={locked}
-            className="h-8 font-mono text-xs"
-          />
-          <Button
-            type="button"
-            size="sm"
-            disabled={busy || locked}
-            onClick={add}
-            className="h-8 gap-1 bg-[#165b33] px-3 text-xs font-medium text-white hover:bg-[#124929]"
-          >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-            <span>Add Link</span>
-          </Button>
-        </div>
+              {effectiveLocked && (
+                <div className="flex items-center gap-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600">
+                  <Lock className="h-3.5 w-3.5" /> Adding links is closed by coordinator
+                </div>
+              )}
+
+              {/* Input bar */}
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,2fr)_auto]">
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="h-8 rounded-md border border-[#d8d3c7] bg-white px-2.5 text-xs text-[#1c2024] outline-none dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
+                >
+                  {LINK_CATEGORIES.map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  placeholder="Project Title"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  disabled={effectiveLocked}
+                  className="h-8 text-xs"
+                />
+                <Input
+                  placeholder="https://..."
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={effectiveLocked}
+                  className="h-8 font-mono text-xs"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busy || effectiveLocked}
+                  onClick={add}
+                  className="h-8 gap-1 bg-[#165b33] px-3 text-xs font-medium text-white hover:bg-[#124929]"
+                >
+                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  <span>Add Link</span>
+                </Button>
+              </div>
+            </>
+          );
+        })()}
 
         {category === "INHOUSE_PROJECT_LINK" && (
           <div className="rounded border border-cyan-500/30 bg-cyan-500/10 p-2 text-xs text-cyan-800 dark:text-cyan-300">
@@ -220,17 +243,21 @@ export function LinkManager({ onChanged, locked = false }: { onChanged?: () => v
                   </a>
                 </div>
                 {statusBadge(l.status)}
-                {l.status !== "VERIFIED" && !locked && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-[#5c6470] hover:text-[#a82424]"
-                    aria-label="Remove"
-                    onClick={() => remove(l.id)}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                )}
+                {(() => {
+                  const linksUnlocked = unlockInfo?.sections?.includes("PROJECT_LINKS") || unlockInfo?.sections?.includes("ALL");
+                  const effectiveLocked = locked && !linksUnlocked;
+                  return (l.status !== "VERIFIED" || linksUnlocked) && !effectiveLocked ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-[#5c6470] hover:text-[#a82424]"
+                      aria-label="Remove"
+                      onClick={() => remove(l.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  ) : null;
+                })()}
               </li>
             ))}
           </ul>

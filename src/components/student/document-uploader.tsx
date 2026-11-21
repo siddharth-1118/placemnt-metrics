@@ -9,6 +9,7 @@ import {
   Globe,
   Loader2,
   Lock,
+  Unlock,
   Server,
   ShieldCheck,
   Trash2,
@@ -98,6 +99,10 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<Record<string, string>>({});
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [unlockInfo, setUnlockInfo] = useState<{
+    sections: string[];
+    reason?: string;
+  } | null>(null);
 
   async function load() {
     try {
@@ -105,6 +110,7 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
       if (res.ok) {
         const b = await res.json();
         setDocs(b.documents ?? []);
+        if (b.unlock) setUnlockInfo(b.unlock);
       }
     } catch {
       /* transient */
@@ -227,8 +233,20 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
     byCategory.set(d.category, list);
   }
 
+  const docsUnlocked = unlockInfo?.sections?.includes("DOCUMENTS") || unlockInfo?.sections?.includes("ALL");
+  const effectiveLocked = locked && !docsUnlocked;
+
   return (
     <div className="space-y-4">
+      {docsUnlocked && (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5 text-xs font-medium text-emerald-800 dark:text-emerald-300">
+          <Unlock className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span>
+            🔓 <strong>Document Uploads Unlocked by Super Admin:</strong> You have permission to upload, re-upload, or replace documents in all sections.
+          </span>
+        </div>
+      )}
+
       <div>
         <h3 className="text-sm font-bold text-[#1c2024] dark:text-white">Document Proof Uploads</h3>
         <p className="mt-0.5 text-xs text-[#5c6470] dark:text-[#94a3b8]">
@@ -242,7 +260,7 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
         </div>
       )}
 
-      {locked && (
+      {effectiveLocked && (
         <div className="flex items-center gap-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600">
           <Lock className="h-3.5 w-3.5" /> Uploads are closed by the coordinator — existing
           documents are unaffected.
@@ -252,10 +270,8 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
       <div className="space-y-3">
         {DOC_CATEGORIES.map((cat) => {
           const mine = byCategory.get(cat.key) ?? [];
-          // A verified document freezes its section: the student can no longer
-          // add files there. Only a coordinator re-opens it (by deleting the
-          // verified proof, which notifies the student to re-upload).
-          const sectionLocked = mine.some((d) => d.status === "VERIFIED");
+          // A verified document freezes its section unless Super Admin granted unlock
+          const sectionLocked = !docsUnlocked && mine.some((d) => d.status === "VERIFIED");
           const style = SECTION_STYLE[cat.key] ?? { icon: FileText, ring: "border-border" };
           const Icon = style.icon;
           return (
@@ -306,7 +322,7 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
                           {fmtSize(d.sizeBytes)}
                         </span>
                         {statusBadge(d.status)}
-                        {d.status !== "VERIFIED" && !locked && (
+                        {(d.status !== "VERIFIED" || docsUnlocked) && !effectiveLocked && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -322,7 +338,7 @@ export function DocumentUploader({ onChanged, locked = false }: { onChanged?: ()
                   </ul>
                 )}
 
-                {locked ? null : sectionLocked ? (
+                {effectiveLocked ? null : sectionLocked ? (
                   <p className="flex items-center gap-1.5 border-t border-[#e2ded5] pt-2.5 text-[11px] text-[#5c6470] dark:border-[#262f3c] dark:text-[#94a3b8]">
                     <Lock className="h-3.5 w-3.5 shrink-0" />
                     Verified by a coordinator — this section is locked. Ask your coordinator if it

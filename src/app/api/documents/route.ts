@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
+import { isSectionUnlocked } from "@/lib/student-unlock";
 import { docToDto, redactReviewer } from "@/lib/dto";
 import { putDocument, deleteDocument, createSignedDocumentUpload } from "@/lib/storage";
 import { notify } from "@/lib/notify";
@@ -44,6 +45,7 @@ async function verifiedSectionLock(
   requesterIsEvaluator: boolean
 ): Promise<NextResponse | null> {
   if (requesterIsEvaluator) return null;
+  if (await isSectionUnlocked(studentId, "DOCUMENTS")) return null;
   const student = await prisma.student.findUnique({
     where: { id: studentId },
     select: { status: true },
@@ -102,9 +104,10 @@ export async function POST(req: Request) {
   }
 
   // Submissions closed: students can no longer add documents (evaluators
-  // bypass so they can still fix data during review).
+  // bypass so they can still fix data during review; unlocked students bypass).
   const isEvaluatorUser = user.canViewSubmissions;
-  if (!isEvaluatorUser && (await isSubmissionsLocked())) {
+  const isDocUnlocked = await isSectionUnlocked(user.id, "DOCUMENTS");
+  if (!isEvaluatorUser && !isDocUnlocked && (await isSubmissionsLocked())) {
     return NextResponse.json(
       { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
       { status: 423 }
@@ -284,7 +287,8 @@ export async function DELETE(req: Request) {
     if (doc.studentId !== user.id) {
       return NextResponse.json({ error: "Not your document" }, { status: 403 });
     }
-    if (doc.status !== "PENDING") {
+    const isDocUnlocked = await isSectionUnlocked(user.id, "DOCUMENTS");
+    if (doc.status !== "PENDING" && !isDocUnlocked) {
       return NextResponse.json(
         { error: "This document was already reviewed and is locked — ask a coordinator if it must be replaced" },
         { status: 403 }

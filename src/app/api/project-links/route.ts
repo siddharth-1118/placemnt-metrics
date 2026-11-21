@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
+import { isSectionUnlocked } from "@/lib/student-unlock";
 import { linkToDto, redactReviewer } from "@/lib/dto";
 import { LINK_CATEGORY_KEYS } from "@/lib/categories";
 
@@ -24,9 +25,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sign in to add links" }, { status: 401 });
   }
 
-  // Submissions closed: students can no longer add links (evaluators bypass).
+  // Submissions closed: students can no longer add links (evaluators & unlocked students bypass).
   const isEvaluatorUser = user.canViewSubmissions;
-  if (!isEvaluatorUser && (await isSubmissionsLocked())) {
+  const isLinksUnlocked = await isSectionUnlocked(user.id, "PROJECT_LINKS");
+  if (!isEvaluatorUser && !isLinksUnlocked && (await isSubmissionsLocked())) {
     return NextResponse.json(
       { error: "Submissions are closed by the coordinator. Please contact your coordinator." },
       { status: 423 }
@@ -85,10 +87,11 @@ export async function DELETE(req: Request) {
   if (!link) return NextResponse.json({ error: "Link not found" }, { status: 404 });
 
   const isEvaluator = user.canViewSubmissions;
+  const isLinksUnlocked = await isSectionUnlocked(user.id, "PROJECT_LINKS");
   if (link.studentId !== user.id && !isEvaluator) {
     return NextResponse.json({ error: "Not your link" }, { status: 403 });
   }
-  if (link.status === "VERIFIED" && !isEvaluator) {
+  if (link.status === "VERIFIED" && !isEvaluator && !isLinksUnlocked) {
     return NextResponse.json(
       { error: "This link was already verified — ask a coordinator to remove it" },
       { status: 403 }

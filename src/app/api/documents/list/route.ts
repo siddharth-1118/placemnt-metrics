@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, filterStudentDtoForUser } from "@/lib/auth";
 import { docToDto, linkToDto, redactReviewers } from "@/lib/dto";
+import { getStudentUnlock } from "@/lib/student-unlock";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +32,15 @@ export async function GET(req: Request) {
   const docDtos = documents.map(docToDto);
   const linkDtos = projectLinks.map(linkToDto);
 
+  const unlock = await getStudentUnlock(studentId);
+
   // WHO reviewed an item is evaluator-only: a student viewing their own
   // documents gets the status but never the reviewer's name.
   if (!isEvaluator) {
     return NextResponse.json({
       documents: redactReviewers(docDtos, false),
       projectLinks: redactReviewers(linkDtos, false),
+      unlock,
     });
   }
 
@@ -46,7 +50,10 @@ export async function GET(req: Request) {
     { documents: docDtos, projectLinks: linkDtos },
     user
   );
-  return NextResponse.json(filtered);
+  return NextResponse.json({
+    ...filtered,
+    unlock,
+  });
 }
 
 /**

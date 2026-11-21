@@ -4,6 +4,7 @@ import { ArrowLeft, GraduationCap, Lock } from "lucide-react";
 import { SubmitForm } from "@/components/student/submit-form";
 import { getSessionUser } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
+import { getStudentUnlock } from "@/lib/student-unlock";
 
 export const metadata: Metadata = {
   title: "Student Registration · Placement Matrix Portal",
@@ -14,6 +15,9 @@ export default async function StudentSubmitPage() {
   const user = await getSessionUser();
   const isEvaluator = user?.canViewSubmissions ?? false;
   const locked = !isEvaluator && (await isSubmissionsLocked());
+  const unlock = user ? await getStudentUnlock(user.id) : null;
+  const isUnlocked = !!unlock && unlock.sections.length > 0;
+  const effectiveLocked = locked && !isUnlocked;
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
@@ -42,7 +46,7 @@ export default async function StudentSubmitPage() {
         </p>
       </div>
 
-      {locked && (
+      {effectiveLocked && (
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3.5 text-sm">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
           <div>
@@ -58,7 +62,7 @@ export default async function StudentSubmitPage() {
 
       {/* Main Form */}
       <div className="mt-5">
-        <SubmitForm locked={locked} />
+        <SubmitForm locked={effectiveLocked} />
       </div>
     </div>
   );

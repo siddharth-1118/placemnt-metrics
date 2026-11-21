@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Lock } from "lucide-react";
+import { Lock, Unlock } from "lucide-react";
 import { getSessionUser } from "@/lib/auth";
 import { isSubmissionsLocked } from "@/lib/settings";
+import { getStudentUnlock, getUnlockedSectionLabels } from "@/lib/student-unlock";
 import { prisma } from "@/lib/prisma";
 import { toDto } from "@/lib/dto";
 import { ScrapeCards } from "@/components/dashboard/read-only-cards";
@@ -61,6 +62,9 @@ export default async function MySubmissionPage() {
 
   const isEvaluator = user.canViewSubmissions;
   const locked = !isEvaluator && (await isSubmissionsLocked());
+  const unlock = await getStudentUnlock(user.id);
+  const hasActiveUnlock = !!unlock && unlock.sections.length > 0;
+  const effectiveLocked = locked && !hasActiveUnlock;
 
   const row = await prisma.student.findUnique({
     where: { id: user.id },
@@ -105,8 +109,8 @@ export default async function MySubmissionPage() {
               variant="outline"
               size="sm"
               className="text-xs h-8"
-              disabled={locked}
-              title={locked ? "Submissions are closed by the coordinator" : undefined}
+              disabled={effectiveLocked}
+              title={effectiveLocked ? "Submissions are closed by the coordinator" : undefined}
             >
               <span>Edit Profile</span>
             </Button>
@@ -115,7 +119,29 @@ export default async function MySubmissionPage() {
         </div>
       </div>
 
-      {locked && (
+      {hasActiveUnlock && (
+        <div className="flex items-start gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3.5 text-sm text-emerald-900 dark:text-emerald-200">
+          <Unlock className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <div className="flex-1">
+            <p className="font-semibold text-emerald-800 dark:text-emerald-300">
+              Profile Edit Access Granted by Super Admin
+            </p>
+            <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-400">
+              You have permission to edit:{" "}
+              <strong className="underline">{getUnlockedSectionLabels(unlock.sections)}</strong>.
+              {unlock.unlockedBy && <span> (Authorized by {unlock.unlockedBy})</span>}
+              {unlock.reason && <span> · Note: &quot;{unlock.reason}&quot;</span>}
+            </p>
+          </div>
+          <Link href="/student/submit">
+            <Button size="sm" className="bg-[#165b33] text-white hover:bg-[#124929] text-xs h-7">
+              Edit Profile
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      {effectiveLocked && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3.5 text-sm">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
           <div>
@@ -352,7 +378,7 @@ export default async function MySubmissionPage() {
             section, each verified by its assigned coordinator.
           </p>
         </div>
-        <DocumentUploader locked={locked} />
+        <DocumentUploader locked={effectiveLocked} />
       </section>
 
       {/* 6. Project links */}
@@ -360,7 +386,7 @@ export default async function MySubmissionPage() {
         <div>
           <h2 className="text-lg font-semibold tracking-[-0.015em]">Project &amp; in-house links</h2>
         </div>
-        <LinkManager locked={locked} />
+        <LinkManager locked={effectiveLocked} />
       </section>
 
       {/* 7. Account Password Security */}
