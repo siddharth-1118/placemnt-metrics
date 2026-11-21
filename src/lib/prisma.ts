@@ -18,10 +18,10 @@ function getCleanDatabaseUrl(): string | undefined {
         }
       }
 
-      // Enforce connection_limit=1 on serverless so each lambda holds at most 1 connection.
-      // This prevents bursting beyond Supabase's pool_size: 15 limit (EMAXCONNSESSION).
+      // In transaction pooling mode (port 6543 / pgbouncer=true), allow 3 connections per lambda
+      // so concurrent sub-queries (auth check + data fetch) execute in parallel without bottlenecking.
       if (!url.searchParams.has("connection_limit")) {
-        url.searchParams.set("connection_limit", "1");
+        url.searchParams.set("connection_limit", url.port === "6543" ? "3" : "1");
       }
       if (!url.searchParams.has("connect_timeout")) {
         url.searchParams.set("connect_timeout", "15");

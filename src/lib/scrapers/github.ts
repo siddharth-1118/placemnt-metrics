@@ -38,7 +38,7 @@ function isNotFound(err: unknown): boolean {
   return ((err as Error)?.message ?? "").includes("404");
 }
 
-async function ghFetch<T>(path: string, token?: string): Promise<T> {
+async function ghFetch<T>(path: string, token?: string, timeoutMs = 2200): Promise<T> {
   const res = await fetch(`${GITHUB_API}${path}`, {
     headers: {
       Accept: "application/vnd.github+json",
@@ -46,6 +46,7 @@ async function ghFetch<T>(path: string, token?: string): Promise<T> {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (res.status === 404) throw new Error(`GitHub profile not found (404)`);
   if (res.status === 403 || res.status === 429) {
@@ -55,11 +56,12 @@ async function ghFetch<T>(path: string, token?: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function ghHtml(url: string): Promise<string> {
+async function ghHtml(url: string, timeoutMs = 2500): Promise<string> {
   const res = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "text/html" },
     cache: "no-store",
     redirect: "follow",
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (res.status === 404) throw new Error(`GitHub profile not found (404)`);
   if (!res.ok) throw new Error(`GitHub page error ${res.status} for ${url}`);
@@ -98,6 +100,7 @@ async function fetchContributionCalendar(login: string): Promise<{ date: string;
     const res = await fetch(`https://github.com/users/${login}/contributions`, {
       headers: { "User-Agent": UA },
       cache: "no-store",
+      signal: AbortSignal.timeout(2200),
     });
     if (!res.ok) return [];
     const html = await res.text();

@@ -8,7 +8,7 @@
  */
 import { deflateRawSync } from "node:zlib";
 
-export type CellStyle = "default" | "header" | "center" | "boldCenter";
+export type CellStyle = "default" | "header" | "center" | "boldCenter" | "link";
 
 export interface CellObject {
   value?: string | number | Date | null;
@@ -160,12 +160,15 @@ function cellXml(raw: CellValue, row: number, col: number, isHeader = false): st
     else if (obj.style === "header") customStyleIdx = "1";
     else if (obj.style === "center") customStyleIdx = "2";
     else if (obj.style === "boldCenter") customStyleIdx = "3";
+    else if (obj.style === "link") customStyleIdx = "5";
   }
 
-  // Formula cell (e.g. Total =SUM(F2:R2))
+  // Formula cell (e.g. Total =SUM(F2:R2) or =HYPERLINK("https://...", "https://..."))
   if (formula) {
-    const v = value !== undefined && value !== null ? `<v>${value}</v>` : "<v>0</v>";
-    return `<c r="${ref}" s="${customStyleIdx}"><f>${xmlEscape(formula)}</f>${v}</c>`;
+    const v = value !== undefined && value !== null ? `<v>${xmlEscape(String(value))}</v>` : "<v>0</v>";
+    const isStr = typeof value === "string";
+    const typeAttr = isStr ? ' t="str"' : "";
+    return `<c r="${ref}"${typeAttr} s="${customStyleIdx}"><f>${xmlEscape(formula)}</f>${v}</c>`;
   }
 
   // Numeric cell
@@ -238,9 +241,10 @@ export function buildXlsx(spec: XlsxSheetSpec): Buffer {
 
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<fonts count="2">
+<fonts count="3">
   <font><sz val="11"/><name val="Calibri"/></font>
   <font><b/><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/></font>
+  <font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/></font>
 </fonts>
 <fills count="3">
   <fill><patternFill patternType="none"/></fill>
@@ -258,7 +262,7 @@ export function buildXlsx(spec: XlsxSheetSpec): Buffer {
   </border>
 </borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="5">
+<cellXfs count="6">
   <!-- 0: left-aligned body text with border -->
   <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1" applyBorder="1">
     <alignment wrapText="1" vertical="center" horizontal="left"/>
@@ -278,6 +282,10 @@ export function buildXlsx(spec: XlsxSheetSpec): Buffer {
   <!-- 4: date cell with border -->
   <xf numFmtId="14" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1">
     <alignment wrapText="1" vertical="center" horizontal="center"/>
+  </xf>
+  <!-- 5: clickable hyperlink cell: blue, underlined, left-aligned with border -->
+  <xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+    <alignment wrapText="1" vertical="center" horizontal="left"/>
   </xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>

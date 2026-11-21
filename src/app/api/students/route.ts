@@ -108,53 +108,6 @@ export async function GET() {
   // super admin and unrestricted coordinators get everything.
   const dtos = students.map((s) => filterStudentDtoForUser(toDto(s), user));
 
-  // Lightweight background auto-healer: fix any student records whose CGPA or academic score is 0
-  const uncalculated = students.filter(
-    (s) =>
-      (s.cgpa <= 0 && (s.sgpaSem1 > 0 || s.sgpaSem2 > 0)) ||
-      (s.scoreAcademic <= 0 &&
-        (s.tenthPercent > 0 || s.twelfthPercent > 0 || s.cgpa > 0 || s.sgpaSem1 > 0 || s.sgpaSem2 > 0))
-  );
-  if (uncalculated.length > 0) {
-    Promise.all(
-      uncalculated.map(async (st) => {
-        const s1 = Number(st.sgpaSem1 || 0);
-        const s2 = Number(st.sgpaSem2 || 0);
-        const rawCgpa = Number(st.cgpa || 0);
-        const effCgpa =
-          rawCgpa > 0
-            ? rawCgpa
-            : s1 > 0 && s2 > 0
-              ? Math.round(((s1 + s2) / 2) * 100) / 100
-              : s1 > 0
-                ? s1
-                : s2 > 0
-                  ? s2
-                  : 0;
-        const acadScore = suggestAcademicScore(st.tenthPercent, st.twelfthPercent, effCgpa);
-        const tot = clampScores({
-          academic: acadScore,
-          github: st.scoreGithub,
-          coding: st.scoreCoding,
-          internship: st.scoreInternship,
-          certifications: st.scoreCertifications,
-          projects: st.scoreProjects,
-          fullstack: st.scoreFullstack,
-          hackathons: st.scoreHackathons,
-          inhouse: st.scoreInhouse,
-          membership: st.scoreMembership,
-          shl: st.scoreShl,
-        }).total;
-        return prisma.student
-          .update({
-            where: { id: st.id },
-            data: { cgpa: effCgpa, scoreAcademic: acadScore, totalScore: tot },
-          })
-          .catch(() => {});
-      })
-    ).catch(() => {});
-  }
-
   return NextResponse.json(
     { students: dtos },
     {
@@ -380,13 +333,12 @@ export async function POST(req: Request) {
     });
   }
 
-  // Await the scrape jobs so results are ready and persisted before this response lands
-  // (serverless platforms freeze execution after the response). Failures are
-  // persisted on the job rows — the response always goes through.
+  // Await the scrape jobs with a bounded 2.5s window so live results land immediately
+  // without keeping concurrent users or serverless containers hanging.
   try {
     await Promise.race([
       enqueueScrapes(student.id, student.githubUrl, student.leetcodeUrl),
-      new Promise((resolve) => setTimeout(resolve, 8000)),
+      new Promise((resolve) => setTimeout(resolve, 2500)),
     ]);
   } catch (scrapeErr) {
     console.warn("Background scrape warning:", scrapeErr);
@@ -398,10 +350,10 @@ export async function POST(req: Request) {
     include: { scrapes: true, documents: true, projectLinks: true },
   });
 
-    return NextResponse.json(
-      { student: toDto(fresh ?? student), message: "Submission received — coding profiles scraped." },
-      { status: existing ? 200 : 201 }
-    );
+  return NextResponse.json(
+    { student: toDto(fresh ?? student), message: "Submission received — coding profiles processed." },
+    { status: existing ? 200 : 201 }
+  );
   } catch (err) {
     console.error("POST /api/students error:", err);
     return NextResponse.json(

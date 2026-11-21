@@ -10,12 +10,13 @@ const GQL = "https://leetcode.com/graphql";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
-async function gqlOnce<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+async function gqlOnce<T>(query: string, variables: Record<string, unknown>, timeoutMs = 2200): Promise<T> {
   const res = await fetch(GQL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": UA, Referer: "https://leetcode.com" },
     body: JSON.stringify({ query, variables }),
     cache: "no-store",
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (res.status === 404) throw new Error("LeetCode profile not found (404)");
   if (res.status === 429) throw new Error("LeetCode rate limit reached (429)");
@@ -26,19 +27,9 @@ async function gqlOnce<T>(query: string, variables: Record<string, unknown>): Pr
   return json.data;
 }
 
-/** Retry once on transient failures (network blips, 429, 5xx). */
+/** Execute query with fast failover to mirrors instead of stalling. */
 async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-  try {
-    return await gqlOnce<T>(query, variables);
-  } catch (err) {
-    const msg = (err as Error).message ?? "";
-    const transient =
-      msg.includes("429") || msg.includes("rate limit") || /LeetCode API error 5\d\d/.test(msg) ||
-      msg.includes("fetch failed");
-    if (!transient) throw err;
-    await new Promise((r) => setTimeout(r, 1500));
-    return gqlOnce<T>(query, variables);
-  }
+  return gqlOnce<T>(query, variables, 2200);
 }
 
 interface ProfileData {
@@ -196,6 +187,7 @@ async function scrapeLeetcodeViaMirror(username: string): Promise<LeetcodeScrape
     const res = await fetch(`https://leetcode-api-faisalshohag.vercel.app/${username}`, {
       headers: { "User-Agent": UA },
       cache: "no-store",
+      signal: AbortSignal.timeout(2500),
     });
     if (res.ok) {
       const data = (await res.json()) as any;
@@ -237,6 +229,7 @@ async function scrapeLeetcodeViaMirror(username: string): Promise<LeetcodeScrape
   const res2 = await fetch(`https://alfa-leetcode-api.onrender.com/userProfile/${username}`, {
     headers: { "User-Agent": UA },
     cache: "no-store",
+    signal: AbortSignal.timeout(2500),
   });
   if (!res2.ok) throw new Error(`LeetCode profile not found or unavailable for ${username}`);
   const data2 = (await res2.json()) as any;

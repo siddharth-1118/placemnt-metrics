@@ -1,4 +1,4 @@
-import { clampScores } from "@/lib/score";
+import { clampScores, suggestAcademicScore } from "@/lib/score";
 import type { ScoreAuditEntry, StudentDto } from "@/lib/types";
 
 /**
@@ -180,6 +180,14 @@ export function toDto(
       ? Math.round(((s1 + s2) / 2) * 100) / 100
       : (s1 > 0 ? s1 : (s2 > 0 ? s2 : 0));
 
+  const rawAcad = Number(s.scoreAcademic || 0);
+  const derivedAcad =
+    rawAcad > 0 || s.academicOverridden
+      ? rawAcad
+      : (s.tenthPercent > 0 || s.twelfthPercent > 0 || derivedCgpa > 0)
+        ? suggestAcademicScore(s.tenthPercent, s.twelfthPercent, derivedCgpa)
+        : 0;
+
   return {
     id: s.id,
     registerNumber: s.registerNumber,
@@ -207,7 +215,7 @@ export function toDto(
     documents: (documentsArg ?? s.documents ?? []).map(docToDto),
     projectLinks: (linksArg ?? s.projectLinks ?? []).map(linkToDto),
     scores: clampScores({
-      academic: s.scoreAcademic,
+      academic: derivedAcad,
       github: s.scoreGithub,
       coding: s.scoreCoding,
       internship: s.scoreInternship,

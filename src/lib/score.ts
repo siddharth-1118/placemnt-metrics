@@ -183,8 +183,31 @@ export async function applyAutoPlatformScores(studentId: string): Promise<void> 
     // Corrupt payloads shouldn't block scoring — treat as missing.
   }
 
+  const rawCgpa = Number(student.cgpa || 0);
+  const s1 = Number(student.sgpaSem1 || 0);
+  const s2 = Number(student.sgpaSem2 || 0);
+  const effCgpa =
+    rawCgpa > 0
+      ? rawCgpa
+      : s1 > 0 && s2 > 0
+        ? Math.round(((s1 + s2) / 2) * 100) / 100
+        : s1 > 0
+          ? s1
+          : s2 > 0
+            ? s2
+            : 0;
+
+  let academicToSet = student.scoreAcademic;
+  if (
+    !student.academicOverridden &&
+    academicToSet <= 0 &&
+    (student.tenthPercent > 0 || student.twelfthPercent > 0 || effCgpa > 0)
+  ) {
+    academicToSet = suggestAcademicScore(student.tenthPercent, student.twelfthPercent, effCgpa);
+  }
+
   const clamped = clampScores({
-    academic: student.scoreAcademic,
+    academic: academicToSet,
     // GitHub & coding are ALWAYS derived from the latest scrape payloads —
     // they are system-calculated components, never coordinator-entered —
     // EXCEPT when the super admin has manually overridden them.
@@ -201,6 +224,7 @@ export async function applyAutoPlatformScores(studentId: string): Promise<void> 
   });
 
   const unchanged =
+    clamped.academic === student.scoreAcademic &&
     clamped.github === student.scoreGithub &&
     clamped.coding === student.scoreCoding &&
     clamped.total === student.totalScore;
@@ -209,6 +233,8 @@ export async function applyAutoPlatformScores(studentId: string): Promise<void> 
   await prisma.student.update({
     where: { id: student.id },
     data: {
+      cgpa: effCgpa > 0 && rawCgpa <= 0 ? effCgpa : undefined,
+      scoreAcademic: clamped.academic,
       scoreGithub: clamped.github,
       scoreCoding: clamped.coding,
       totalScore: clamped.total,
@@ -220,33 +246,45 @@ export async function applyAutoPlatformScores(studentId: string): Promise<void> 
 /**
  * Recompute dense placement ranks (1, 2, 3, …, ties share a rank) for all
  * students ordered by total score, then register number for stable ties.
+ * High-performance: only writes to the database for students whose rank
+ * actually changed, avoiding lock contention and connection pool exhaustion.
  */
 export async function assignRanks(): Promise<void> {
   // Imported lazily to keep this module edge-safe for client importers.
   const { prisma } = await import("@/lib/prisma");
   const students = await prisma.student.findMany({
+    where: {
+      NOT: {
+        registerNumber: { startsWith: "COORD-" },
+      },
+    },
     orderBy: [{ totalScore: "desc" }, { registerNumber: "asc" }],
-    select: { id: true, totalScore: true },
+    select: { id: true, totalScore: true, rank: true },
   });
 
   let lastScore: number | null = null;
   let rank = 0;
   const updates: { id: string; rank: number | null }[] = [];
   for (const [i, s] of students.entries()) {
-    if (s.totalScore <= 0) {
-      updates.push({ id: s.id, rank: null });
-      continue;
+    let newRank: number | null = null;
+    if (s.totalScore > 0) {
+      if (s.totalScore !== lastScore) {
+        rank = i + 1;
+        lastScore = s.totalScore;
+      }
+      newRank = rank;
     }
-    if (s.totalScore !== lastScore) {
-      rank = i + 1;
-      lastScore = s.totalScore;
+    // Only update if rank has ACTUALLY changed!
+    if (newRank !== s.rank) {
+      updates.push({ id: s.id, rank: newRank });
     }
-    updates.push({ id: s.id, rank });
   }
 
-  await prisma.$transaction(
+  if (updates.length === 0) return;
+
+  await Promise.all(
     updates.map((u) =>
-      prisma.student.update({ where: { id: u.id }, data: { rank: u.rank } })
+      prisma.student.update({ where: { id: u.id }, data: { rank: u.rank } }).catch(() => {})
     )
   );
 }
