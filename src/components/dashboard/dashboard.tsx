@@ -24,7 +24,7 @@ import { MissingDocsModal } from "@/components/dashboard/missing-docs-modal";
 import { OneDriveSyncModal } from "@/components/dashboard/onedrive-sync-modal";
 import { scopesAreFull, type ScoreScope } from "@/lib/scopes";
 import { SRM_OFFICIAL_METRICS, type StudentDto } from "@/lib/types";
-import { auditStudentDocuments, docCategoryLabel } from "@/lib/categories";
+import { auditStudentDocuments, docCategoryLabel, linkCategoryLabel } from "@/lib/categories";
 
 type SortKey = "rank" | "totalScore" | "missingDocs" | "cgpa" | "name" | "registerNumber";
 type StatusFilter = "ALL" | "PENDING" | "VERIFIED";
@@ -163,6 +163,8 @@ export function Dashboard({
   // Client-side fallback: RFC-4180 CSV with UTF-8 BOM (\uFEFF)
   // Ensures Microsoft Excel opens it seamlessly without any encoding or delimiter prompts.
   function downloadCsvFallback(list: StudentDto[], filename: string) {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+
     const headers = [
       "Registration Number",
       "Full Name (AS PER ATTENDANCE)",
@@ -183,7 +185,34 @@ export function Dashboard({
       "Membership of Professional Bodies (2)",
       "SHL Assessment / Talent Discovery Assessment / N.C.A.T (National Competence & Employability Test) (13)",
       "Total",
+      "GitHub Profile Link",
+      "Coding Profile Link (LeetCode)",
+      "Projects Links (Repo & Demo)",
+      "Full Stack Project Links",
+      "In-House Project Links",
+      "Internship Proof Documents",
+      "Skillset & Certifications Proofs",
+      "Hackathons & Competitions Proofs",
+      "In-House Project Proofs",
+      "Membership Proofs",
+      "SHL Assessment Proofs",
+      "Academic Marksheets (10th / 12th / CGPA)",
+      "All Uploaded Documents & Links (Consolidated)",
     ];
+
+    function makeCsvDocLink(d: { id?: string; fileUrl?: string; fileName?: string }, token?: string | null): string {
+      const path = d.fileUrl || (d.id ? `/api/documents/${d.id}/file` : "");
+      if (!path) return "";
+      const tokenQuery = token ? `token=${encodeURIComponent(token)}` : "";
+      const fullPath = tokenQuery ? (path.includes("?") ? `${path}&${tokenQuery}` : `${path}?${tokenQuery}`) : path;
+      return origin ? `${origin}${fullPath}` : fullPath;
+    }
+
+    function escapeCsv(val: any): string {
+      if (val === null || val === undefined) return '""';
+      const str = String(val);
+      return `"${str.replace(/"/g, '""')}"`;
+    }
 
     const rows = list.map((s) => {
       const tenthScore = s.tenthPercent
@@ -213,12 +242,70 @@ export function Dashboard({
         ? s.scores.total
         : (tenthScore + twelfthScore + cgpaScore + ghScore + codingScore + internScore + certScore + projScore + fsdScore + hackScore + inhouseScore + memberScore + shlScore);
 
+      const projLinks = (s.projectLinks || [])
+        .filter((l) => l.category === "PROJECT" || !l.category)
+        .map((p) => `${p.label ? `${p.label}: ` : ""}${p.url}`);
+      for (const p of s.proofUrls || []) {
+        if (p?.url) projLinks.push(`${p.label ? `${p.label}: ` : ""}${p.url}`);
+      }
+
+      const fsdLinks = (s.projectLinks || [])
+        .filter((l) => l.category === "FULLSTACK_PROJECT")
+        .map((p) => `${p.label ? `${p.label}: ` : ""}${p.url}`);
+
+      const inhouseLinks = (s.projectLinks || [])
+        .filter((l) => l.category === "INHOUSE_PROJECT_LINK")
+        .map((p) => `${p.label ? `${p.label}: ` : ""}${p.url}`);
+
+      const internDocs = (s.documents || [])
+        .filter((d) => d.category === "INTERNSHIP")
+        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
+
+      const certDocs = (s.documents || [])
+        .filter((d) => d.category === "SKILL_CERT")
+        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
+
+      const hackDocs = (s.documents || [])
+        .filter((d) => d.category === "COMPETITION")
+        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
+
+      const inhouseDocs = (s.documents || [])
+        .filter((d) => d.category === "INHOUSE_PROJECT")
+        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
+
+      const memDocs = (s.documents || [])
+        .filter((d) => d.category === "MEMBERSHIP")
+        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
+
+      const shlDocs = (s.documents || [])
+        .filter((d) => d.category === "SHL")
+        .map((d) => `${d.fileName}${d.note ? ` (${d.note})` : ""}: ${makeCsvDocLink(d, s.uploadToken)}`);
+
+      const academicDocs = (s.documents || [])
+        .filter((d) =>
+          ["TENTH_MARKSHEET", "TWELFTH_MARKSHEET", "CGPA_MARKSHEET", "SEM1_MARKSHEET", "SEM2_MARKSHEET"].includes(d.category)
+        )
+        .map((d) => `${docCategoryLabel(d.category)} (${d.fileName}): ${makeCsvDocLink(d, s.uploadToken)}`);
+
+      const allItems: string[] = [];
+      if (s.githubUrl) allItems.push(`GitHub: ${s.githubUrl}`);
+      if (s.leetcodeUrl) allItems.push(`LeetCode: ${s.leetcodeUrl}`);
+      for (const p of s.projectLinks || []) {
+        if (p.url) allItems.push(`[${linkCategoryLabel(p.category || "")}] ${p.label ? `${p.label}: ` : ""}${p.url}`);
+      }
+      for (const p of s.proofUrls || []) {
+        if (p?.url) allItems.push(`[Project Link] ${p.label ? `${p.label}: ` : ""}${p.url}`);
+      }
+      for (const d of s.documents || []) {
+        allItems.push(`[${docCategoryLabel(d.category || "")}] ${d.fileName}: ${makeCsvDocLink(d, s.uploadToken)}`);
+      }
+
       return [
-        `"${s.registerNumber}"`,
-        `"${s.fullName}"`,
-        `"AO1"`,
-        `"B.Tech - AIML"`,
-        `"${s.facultyAdvisor || "Dr. Kaliraj G"}"`,
+        escapeCsv(s.registerNumber),
+        escapeCsv(s.fullName),
+        escapeCsv("AO1"),
+        escapeCsv("B.Tech - AIML"),
+        escapeCsv(s.facultyAdvisor || "Dr. Kaliraj G"),
         tenthScore > 0 ? tenthScore : 0,
         twelfthScore > 0 ? twelfthScore : 0,
         cgpaScore > 0 ? cgpaScore : 0,
@@ -233,6 +320,19 @@ export function Dashboard({
         memberScore > 0 ? memberScore : 0,
         shlScore > 0 ? shlScore : 0,
         totalVal,
+        escapeCsv(s.githubUrl || "—"),
+        escapeCsv(s.leetcodeUrl || "—"),
+        escapeCsv(projLinks.length ? projLinks.join("\n") : "—"),
+        escapeCsv(fsdLinks.length ? fsdLinks.join("\n") : "—"),
+        escapeCsv(inhouseLinks.length ? inhouseLinks.join("\n") : "—"),
+        escapeCsv(internDocs.length ? internDocs.join("\n") : "—"),
+        escapeCsv(certDocs.length ? certDocs.join("\n") : "—"),
+        escapeCsv(hackDocs.length ? hackDocs.join("\n") : "—"),
+        escapeCsv(inhouseDocs.length ? inhouseDocs.join("\n") : "—"),
+        escapeCsv(memDocs.length ? memDocs.join("\n") : "—"),
+        escapeCsv(shlDocs.length ? shlDocs.join("\n") : "—"),
+        escapeCsv(academicDocs.length ? academicDocs.join("\n") : "—"),
+        escapeCsv(allItems.length ? allItems.join("\n") : "—"),
       ];
     });
 

@@ -152,6 +152,7 @@ export function toDto(
     startedAt: Date;
     finishedAt: Date | null;
   }[];
+  uploadToken?: string | null;
   documents?: DocRow[];
   projectLinks?: LinkRow[];
 },
@@ -210,6 +211,7 @@ export function toDto(
       shl: s.scoreShl,
     }),
     rank: s.rank,
+    uploadToken: s.uploadToken ?? null,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
     scrapes: (s.scrapes ?? []).map((sc) => {

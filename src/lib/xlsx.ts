@@ -208,7 +208,7 @@ export function buildXlsx(spec: XlsxSheetSpec): Buffer {
   const bodyRowsXml = spec.rows
     .map(
       (row, rIdx) =>
-        `<row r="${rIdx + 2}" ht="20" customHeight="1">${row.map((v, cIdx) => cellXml(v, rIdx + 2, cIdx, false)).join("")}</row>`,
+        `<row r="${rIdx + 2}">${row.map((v, cIdx) => cellXml(v, rIdx + 2, cIdx, false)).join("")}</row>`,
     )
     .join("");
 

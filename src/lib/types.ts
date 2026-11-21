@@ -313,6 +313,7 @@ export interface StudentDto {
   rank: number | null;
   createdAt: string;
   updatedAt: string;
+  uploadToken?: string | null;
   scrapes: ScrapeJob[];
 }
 

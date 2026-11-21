@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireEvaluator } from "@/lib/auth";
 import { buildXlsx, type XlsxRow } from "@/lib/xlsx";
+import { docCategoryLabel, linkCategoryLabel } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 
 interface ExportableCandidate {
+  id?: string;
   registerNumber: string;
   fullName: string;
+  email?: string | null;
   section?: string | null;
   specialization?: string | null;
   facultyAdvisor?: string | null;
@@ -38,9 +41,134 @@ interface ExportableCandidate {
     shl?: number;
     total?: number;
   };
+  uploadToken?: string | null;
+  githubUrl?: string | null;
+  leetcodeUrl?: string | null;
+  proofUrls?: any;
+  projectLinks?: Array<{
+    id?: string;
+    category?: string;
+    label?: string;
+    url?: string;
+    status?: string;
+  }>;
+  documents?: Array<{
+    id?: string;
+    category?: string;
+    fileName?: string;
+    fileUrl?: string;
+    status?: string;
+    note?: string | null;
+  }>;
 }
 
-function buildPlacementMatrixXlsx(students: ExportableCandidate[]): Buffer {
+function parseProofUrls(raw: any): Array<{ label: string; url: string }> {
+  if (Array.isArray(raw)) {
+    return raw.filter((p) => p && typeof p.url === "string" && p.url.trim().length > 0);
+  }
+  if (typeof raw === "string" && raw.trim().startsWith("[")) {
+    try {
+      const p = JSON.parse(raw);
+      if (Array.isArray(p)) {
+        return p.filter((x) => x && typeof x.url === "string" && x.url.trim().length > 0);
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function makeDocLink(
+  doc: { id?: string; fileUrl?: string; fileName?: string },
+  student: ExportableCandidate,
+  baseUrl: string
+): string {
+  if (doc.fileUrl && doc.fileUrl.startsWith("http")) return doc.fileUrl;
+  const path = doc.fileUrl || (doc.id ? `/api/documents/${doc.id}/file` : "");
+  if (!path) return "";
+  const tokenQuery = student.uploadToken ? `token=${encodeURIComponent(student.uploadToken)}` : "";
+  let finalPath = path;
+  if (tokenQuery) {
+    finalPath = path.includes("?") ? `${path}&${tokenQuery}` : `${path}?${tokenQuery}`;
+  }
+  const cleanBase = baseUrl ? baseUrl.replace(/\/+$/, "") : "";
+  return cleanBase ? `${cleanBase}${finalPath}` : finalPath;
+}
+
+function formatDocs(
+  docs: Array<{ id?: string; category?: string; fileName?: string; fileUrl?: string; note?: string | null }> | undefined,
+  categories: string[],
+  student: ExportableCandidate,
+  baseUrl: string,
+  includeCategoryLabel = false
+): string {
+  if (!docs || docs.length === 0) return "—";
+  const matched = docs.filter((d) => d.category && categories.includes(d.category));
+  if (matched.length === 0) return "—";
+  return matched
+    .map((d) => {
+      const prefix = includeCategoryLabel ? `${docCategoryLabel(d.category || "")} - ` : "";
+      const noteStr = d.note ? ` [${d.note}]` : "";
+      const url = makeDocLink(d, student, baseUrl);
+      return `${prefix}${d.fileName || "Document"}${noteStr}${url ? `: ${url}` : ""}`;
+    })
+    .join("\n");
+}
+
+function formatProjectLinks(
+  links: Array<{ id?: string; category?: string; label?: string; url?: string }> | undefined,
+  categoryKey: string,
+  extraProofUrls?: Array<{ label: string; url: string }>
+): string {
+  const items: string[] = [];
+  if (links && links.length > 0) {
+    for (const l of links) {
+      if (l.category === categoryKey || (!l.category && categoryKey === "PROJECT")) {
+        if (l.url) items.push(`${l.label ? `${l.label}: ` : ""}${l.url}`);
+      }
+    }
+  }
+  if (extraProofUrls && extraProofUrls.length > 0 && categoryKey === "PROJECT") {
+    for (const p of extraProofUrls) {
+      if (p.url) items.push(`${p.label ? `${p.label}: ` : ""}${p.url}`);
+    }
+  }
+  return items.length > 0 ? items.join("\n") : "—";
+}
+
+function formatAllEvidence(student: ExportableCandidate, baseUrl: string): string {
+  const lines: string[] = [];
+  if (student.githubUrl) lines.push(`GitHub: ${student.githubUrl}`);
+  if (student.leetcodeUrl) lines.push(`LeetCode: ${student.leetcodeUrl}`);
+
+  if (student.projectLinks && student.projectLinks.length > 0) {
+    for (const p of student.projectLinks) {
+      if (p.url) {
+        lines.push(`[${linkCategoryLabel(p.category || "")}] ${p.label ? `${p.label}: ` : ""}${p.url}`);
+      }
+    }
+  }
+
+  const proofs = parseProofUrls(student.proofUrls);
+  for (const p of proofs) {
+    if (p.url) {
+      lines.push(`[Project Link] ${p.label ? `${p.label}: ` : ""}${p.url}`);
+    }
+  }
+
+  if (student.documents && student.documents.length > 0) {
+    for (const d of student.documents) {
+      const url = makeDocLink(d, student, baseUrl);
+      const noteStr = d.note ? ` (${d.note})` : "";
+      lines.push(`[${docCategoryLabel(d.category || "")}] ${d.fileName || "File"}${noteStr}${url ? `: ${url}` : ""}`);
+    }
+  }
+
+  return lines.length > 0 ? lines.join("\n") : "—";
+}
+
+function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = ""): Buffer {
   const headers = [
     "Registration Number",
     "Full Name (AS PER ATTENDANCE)",
@@ -61,6 +189,19 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[]): Buffer {
     "Membership of Professional Bodies (2)",
     "SHL Assessment / Talent Discovery Assessment / N.C.A.T (National Competence & Employability Test) (13)",
     "Total",
+    "GitHub Profile Link",
+    "Coding Profile Link (LeetCode)",
+    "Projects Links (Repo & Demo)",
+    "Full Stack Project Links",
+    "In-House Project Links",
+    "Internship Proof Documents",
+    "Skillset & Certifications Proofs",
+    "Hackathons & Competitions Proofs",
+    "In-House Project Proofs",
+    "Membership Proofs",
+    "SHL Assessment Proofs",
+    "Academic Marksheets (10th / 12th / CGPA)",
+    "All Uploaded Documents & Links (Consolidated)",
   ];
 
   const columnWidths = [
@@ -83,6 +224,19 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[]): Buffer {
     16, // Membership of Professional Bodies (2)
     25, // SHL Assessment ... (13)
     12, // Total
+    32, // GitHub Profile Link
+    32, // Coding Profile Link (LeetCode)
+    42, // Projects Links (Repo & Demo)
+    42, // Full Stack Project Links
+    35, // In-House Project Links
+    48, // Internship Proof Documents
+    48, // Skillset & Certifications Proofs
+    48, // Hackathons & Competitions Proofs
+    42, // In-House Project Proofs
+    38, // Membership Proofs
+    42, // SHL Assessment Proofs
+    48, // Academic Marksheets (10th / 12th / CGPA)
+    55, // All Uploaded Documents & Links (Consolidated)
   ];
 
   const rows: XlsxRow[] = students.map((s, idx) => {
@@ -161,6 +315,8 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[]): Buffer {
               100
           ) / 100;
 
+    const proofList = parseProofUrls(s.proofUrls);
+
     return [
       { value: s.registerNumber || "", style: "center" },
       { value: s.fullName || "", style: "default" },
@@ -185,6 +341,29 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[]): Buffer {
         value: computedTotal,
         style: "boldCenter",
       },
+      // Link & Proof Columns (Columns 20-32)
+      { value: s.githubUrl || "—", style: "default" },
+      { value: s.leetcodeUrl || "—", style: "default" },
+      { value: formatProjectLinks(s.projectLinks, "PROJECT", proofList), style: "default" },
+      { value: formatProjectLinks(s.projectLinks, "FULLSTACK_PROJECT"), style: "default" },
+      { value: formatProjectLinks(s.projectLinks, "INHOUSE_PROJECT_LINK"), style: "default" },
+      { value: formatDocs(s.documents, ["INTERNSHIP"], s, baseUrl), style: "default" },
+      { value: formatDocs(s.documents, ["SKILL_CERT"], s, baseUrl), style: "default" },
+      { value: formatDocs(s.documents, ["COMPETITION"], s, baseUrl), style: "default" },
+      { value: formatDocs(s.documents, ["INHOUSE_PROJECT"], s, baseUrl), style: "default" },
+      { value: formatDocs(s.documents, ["MEMBERSHIP"], s, baseUrl), style: "default" },
+      { value: formatDocs(s.documents, ["SHL"], s, baseUrl), style: "default" },
+      {
+        value: formatDocs(
+          s.documents,
+          ["TENTH_MARKSHEET", "TWELFTH_MARKSHEET", "CGPA_MARKSHEET", "SEM1_MARKSHEET", "SEM2_MARKSHEET"],
+          s,
+          baseUrl,
+          true
+        ),
+        style: "default",
+      },
+      { value: formatAllEvidence(s, baseUrl), style: "default" },
     ];
   });
 
@@ -210,11 +389,21 @@ function createXlsxResponse(buffer: Buffer): NextResponse {
   });
 }
 
+function getBaseUrl(req: Request): string {
+  const host =
+    req.headers.get("x-forwarded-host") ||
+    req.headers.get("host") ||
+    "placement-metrics.vercel.app";
+  const proto = req.headers.get("x-forwarded-proto") || "https";
+  return `${proto}://${host}`;
+}
+
 /**
  * GET /api/students/export
- * Retrieves all student records from the database and returns the official 19-column Excel workbook.
+ * Retrieves all student records from the database and returns the official Excel workbook
+ * complete with all rubric marks, profile links, project links, and document verification URLs.
  */
-export async function GET() {
+export async function GET(req: Request) {
   const { error } = await requireEvaluator();
   if (error) return error;
 
@@ -226,9 +415,30 @@ export async function GET() {
         },
       },
       orderBy: [{ registerNumber: "asc" }],
+      include: {
+        documents: {
+          select: {
+            id: true,
+            category: true,
+            fileName: true,
+            note: true,
+            status: true,
+          },
+        },
+        projectLinks: {
+          select: {
+            id: true,
+            category: true,
+            label: true,
+            url: true,
+            status: true,
+          },
+        },
+      },
     });
 
-    const buffer = buildPlacementMatrixXlsx(students);
+    const baseUrl = getBaseUrl(req);
+    const buffer = buildPlacementMatrixXlsx(students, baseUrl);
     return createXlsxResponse(buffer);
   } catch (err) {
     console.error("GET /api/students/export failed:", err);
@@ -241,9 +451,8 @@ export async function GET() {
 
 /**
  * POST /api/students/export
- * Accepts an array of students from the client in memory, generating the official 19-column
- * Excel workbook immediately without an extra database query. This ensures export always succeeds
- * even if the database is under heavy connection load.
+ * Accepts an array of students from the client in memory, generating the official Excel
+ * workbook with marks and links immediately without an extra database query.
  */
 export async function POST(req: Request) {
   const { error } = await requireEvaluator();
@@ -263,10 +472,31 @@ export async function POST(req: Request) {
           },
         },
         orderBy: [{ registerNumber: "asc" }],
+        include: {
+          documents: {
+            select: {
+              id: true,
+              category: true,
+              fileName: true,
+              note: true,
+              status: true,
+            },
+          },
+          projectLinks: {
+            select: {
+              id: true,
+              category: true,
+              label: true,
+              url: true,
+              status: true,
+            },
+          },
+        },
       });
     }
 
-    const buffer = buildPlacementMatrixXlsx(students);
+    const baseUrl = getBaseUrl(req);
+    const buffer = buildPlacementMatrixXlsx(students, baseUrl);
     return createXlsxResponse(buffer);
   } catch (err) {
     console.error("POST /api/students/export failed:", err);
