@@ -258,6 +258,29 @@ export function VerificationPanel({
         <div className="space-y-4">
           {documents.length > 0 && (
             <div className="space-y-1.5">
+              <div className="flex items-center justify-between pb-1">
+                <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" />
+                  Uploaded Document Proofs ({documents.length})
+                </span>
+                {canScore && documents.some((d) => d.status === "PENDING") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!busyId}
+                    onClick={async () => {
+                      const pending = documents.filter((d) => d.status === "PENDING");
+                      for (const d of pending) {
+                        await act("document", d.id, "VERIFIED");
+                      }
+                    }}
+                    className="h-7 text-xs border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                  >
+                    <Check className="mr-1 h-3.5 w-3.5" />
+                    Verify All Docs ({documents.filter((d) => d.status === "PENDING").length})
+                  </Button>
+                )}
+              </div>
               {documents.map((d) => (
                 <div key={d.id} className="rounded-lg border bg-card">
                   <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
@@ -337,7 +360,30 @@ export function VerificationPanel({
           )}
 
           {links.length > 0 && (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 pt-2">
+              <div className="flex items-center justify-between pb-1 border-t pt-2 dark:border-neutral-800">
+                <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                  Submitted Project &amp; External Links ({links.length})
+                </span>
+                {canScore && links.some((l) => l.status === "PENDING") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!busyId}
+                    onClick={async () => {
+                      const pending = links.filter((l) => l.status === "PENDING");
+                      for (const l of pending) {
+                        await act("link", l.id, "VERIFIED");
+                      }
+                    }}
+                    className="h-7 text-xs border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                  >
+                    <Check className="mr-1 h-3.5 w-3.5" />
+                    Verify All Links ({links.filter((l) => l.status === "PENDING").length})
+                  </Button>
+                )}
+              </div>
               {links.map((l) => (
                 <div key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
                   <ExternalLink className="h-4 w-4 shrink-0 text-primary" />

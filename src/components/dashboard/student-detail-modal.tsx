@@ -1647,6 +1647,44 @@ export function StudentDetailModal({
                             setDirty((d) => new Set(d).add(f.key));
                           }}
                         />
+                        {canWriteThis && !isAuto && (
+                          <div className="flex items-center gap-1 pt-0.5">
+                            <span className="text-[10px] text-muted-foreground">Quick set:</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setScores((s) => ({ ...s, [f.key]: 0 }));
+                                setDirty((d) => new Set(d).add(f.key));
+                              }}
+                              className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-[10px] font-mono hover:bg-slate-100 dark:hover:bg-slate-800"
+                            >
+                              0
+                            </button>
+                            {f.cap >= 5 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const half = Math.round((f.cap / 2) * 2) / 2;
+                                  setScores((s) => ({ ...s, [f.key]: half }));
+                                  setDirty((d) => new Set(d).add(f.key));
+                                }}
+                                className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-[10px] font-mono hover:bg-slate-100 dark:hover:bg-slate-800"
+                              >
+                                {Math.round((f.cap / 2) * 2) / 2}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setScores((s) => ({ ...s, [f.key]: f.cap }));
+                                setDirty((d) => new Set(d).add(f.key));
+                              }}
+                              className="rounded border border-emerald-500/40 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 px-1.5 py-0.5 text-[10px] font-mono font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                            >
+                              Max ({f.cap})
+                            </button>
+                          </div>
+                        )}
                         <p className="text-[11px] text-muted-foreground">{f.hint}</p>
                         {last && (
                           <p

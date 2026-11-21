@@ -31,9 +31,18 @@ import { SRM_OFFICIAL_METRICS, type StudentDto } from "@/lib/types";
 import { auditStudentDocuments, docCategoryLabel, linkCategoryLabel } from "@/lib/categories";
 import { getUnlockedSectionLabels } from "@/lib/student-unlock";
 
-type SortKey = "rank" | "totalScore" | "missingDocs" | "cgpa" | "name" | "registerNumber";
+type SortKey = "rank" | "totalScore" | "missingDocs" | "cgpa" | "name" | "registerNumber" | "projectLinks";
 type StatusFilter = "ALL" | "PENDING" | "VERIFIED";
 type DocFilter = "ALL" | "COMPLETE" | "MISSING" | "NO_DOCS";
+type ProjectFilter =
+  | "ALL"
+  | "HAS_ANY_PROJECT"
+  | "HAS_PROJECTS"
+  | "HAS_FULLSTACK"
+  | "HAS_INHOUSE"
+  | "PENDING_VERIFY"
+  | "VERIFIED"
+  | "NO_PROJECTS";
 type ActiveSection = "STUDENTS" | "SCORES" | "MATRIX" | "REPORTS";
 
 export function getStudentReviewers(s: StudentDto): { finalVerifier: string | null; sectionReviewers: string[] } {
@@ -92,6 +101,7 @@ export function Dashboard({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [docFilter, setDocFilter] = useState<DocFilter>("ALL");
   const [topicFilter, setTopicFilter] = useState<string>("ALL");
+  const [projectFilter, setProjectFilter] = useState<ProjectFilter>("ALL");
   const [showShareModal, setShowShareModal] = useState(false);
   const [modalInitialTab, setModalInitialTab] = useState<"email" | "broadcast" | "share" | "roster">("email");
   const [sortKey, setSortKey] = useState<SortKey>("rank");
@@ -515,7 +525,14 @@ export function Dashboard({
 
   // Export currently filtered students as official Excel sheet
   function exportFilteredToCsv() {
-    const filterName = topicFilter !== "ALL" ? topicFilter : docFilter !== "ALL" ? docFilter : "Filtered";
+    const filterName =
+      projectFilter !== "ALL"
+        ? `Projects_${projectFilter}`
+        : topicFilter !== "ALL"
+        ? topicFilter
+        : docFilter !== "ALL"
+        ? docFilter
+        : "Filtered";
     downloadExcelReport(filtered, filterName);
   }
 
@@ -550,6 +567,42 @@ export function Dashboard({
         if (hasTopic) return false;
       }
 
+      // Project links submission filter
+      if (projectFilter !== "ALL") {
+        const pLinks = (s.projectLinks || []).filter(
+          (l) => l.category === "PROJECT" || !l.category
+        );
+        const fsLinks = (s.projectLinks || []).filter(
+          (l) => l.category === "FULLSTACK_PROJECT"
+        );
+        const ihLinks = (s.projectLinks || []).filter(
+          (l) => l.category === "INHOUSE_PROJECT_LINK"
+        );
+        const hasLegacy = Boolean(s.proofUrls && s.proofUrls.length > 0);
+        const allLinks = s.projectLinks || [];
+
+        if (projectFilter === "HAS_ANY_PROJECT") {
+          if (allLinks.length === 0 && !hasLegacy) return false;
+        } else if (projectFilter === "HAS_PROJECTS") {
+          if (pLinks.length === 0 && !hasLegacy) return false;
+        } else if (projectFilter === "HAS_FULLSTACK") {
+          if (fsLinks.length === 0) return false;
+        } else if (projectFilter === "HAS_INHOUSE") {
+          const hasInhouseDoc = (s.documents || []).some(
+            (d) => d.category === "INHOUSE_PROJECT"
+          );
+          if (ihLinks.length === 0 && !hasInhouseDoc) return false;
+        } else if (projectFilter === "PENDING_VERIFY") {
+          const hasPending = allLinks.some((l) => l.status === "PENDING");
+          if (!hasPending) return false;
+        } else if (projectFilter === "VERIFIED") {
+          const hasVerified = allLinks.some((l) => l.status === "VERIFIED");
+          if (!hasVerified) return false;
+        } else if (projectFilter === "NO_PROJECTS") {
+          if (allLinks.length > 0 || hasLegacy) return false;
+        }
+      }
+
       return true;
     });
 
@@ -567,6 +620,12 @@ export function Dashboard({
           return a.fullName.localeCompare(b.fullName) * dir;
         case "registerNumber":
           return a.registerNumber.localeCompare(b.registerNumber) * dir;
+        case "projectLinks": {
+          const la = (a.projectLinks?.length || 0) + (a.proofUrls?.length || 0);
+          const lb = (b.projectLinks?.length || 0) + (b.proofUrls?.length || 0);
+          if (la !== lb) return (lb - la) * dir;
+          return a.registerNumber.localeCompare(b.registerNumber);
+        }
         case "missingDocs": {
           // Prioritize students with highest missing documents first
           const ma = auditStudentDocuments(a.documents).missingCount;
@@ -579,7 +638,7 @@ export function Dashboard({
       }
     });
     return list;
-  }, [students, query, statusFilter, docFilter, topicFilter, sortKey, sortDir]);
+  }, [students, query, statusFilter, docFilter, topicFilter, projectFilter, sortKey, sortDir]);
 
   const stats = useMemo(() => {
     const verifiedCount = students.filter((s) => s.status === "VERIFIED").length;
@@ -593,6 +652,38 @@ export function Dashboard({
     const noDocsCount = students.filter(
       (s) => !s.documents || s.documents.length === 0
     ).length;
+
+    // Project links statistics
+    const hasAnyProjectsCount = students.filter(
+      (s) =>
+        (s.projectLinks && s.projectLinks.length > 0) ||
+        (s.proofUrls && s.proofUrls.length > 0)
+    ).length;
+    const hasProjectsCount = students.filter(
+      (s) =>
+        (s.projectLinks ?? []).some((l) => l.category === "PROJECT" || !l.category) ||
+        (s.proofUrls && s.proofUrls.length > 0)
+    ).length;
+    const hasFullstackCount = students.filter(
+      (s) => (s.projectLinks ?? []).some((l) => l.category === "FULLSTACK_PROJECT")
+    ).length;
+    const hasInhouseCount = students.filter(
+      (s) =>
+        (s.projectLinks ?? []).some((l) => l.category === "INHOUSE_PROJECT_LINK") ||
+        (s.documents ?? []).some((d) => d.category === "INHOUSE_PROJECT")
+    ).length;
+    const pendingLinkVerificationCount = students.filter(
+      (s) => (s.projectLinks ?? []).some((l) => l.status === "PENDING")
+    ).length;
+    const verifiedProjectsCount = students.filter(
+      (s) => (s.projectLinks ?? []).some((l) => l.status === "VERIFIED")
+    ).length;
+    const noProjectsCount = students.filter(
+      (s) =>
+        (!s.projectLinks || s.projectLinks.length === 0) &&
+        (!s.proofUrls || s.proofUrls.length === 0)
+    ).length;
+
     return {
       total: students.length,
       verified: verifiedCount,
@@ -600,6 +691,13 @@ export function Dashboard({
       missingDocs: missingDocsCount,
       docsComplete: docsCompleteCount,
       noDocs: noDocsCount,
+      hasAnyProjects: hasAnyProjectsCount,
+      hasProjects: hasProjectsCount,
+      hasFullstack: hasFullstackCount,
+      hasInhouse: hasInhouseCount,
+      pendingLinkVerification: pendingLinkVerificationCount,
+      verifiedProjects: verifiedProjectsCount,
+      noProjects: noProjectsCount,
       avgScore: students.length
         ? Math.round(
             (students.reduce((a, s) => a + s.scores.total, 0) / students.length) * 10
@@ -783,11 +881,20 @@ export function Dashboard({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
-          variant={activeSection === "STUDENTS" && statusFilter === "ALL" && docFilter === "ALL" ? "default" : "outline"}
+          variant={
+            activeSection === "STUDENTS" &&
+            statusFilter === "ALL" &&
+            docFilter === "ALL" &&
+            projectFilter === "ALL"
+              ? "default"
+              : "outline"
+          }
           onClick={() => {
             setActiveSection("STUDENTS");
             setStatusFilter("ALL");
             setDocFilter("ALL");
+            setTopicFilter("ALL");
+            setProjectFilter("ALL");
           }}
           className="text-xs"
         >
@@ -859,6 +966,59 @@ export function Dashboard({
         >
           <AlertCircle className="mr-1 h-3 w-3" />
           <span>No Docs {stats.noDocs > 0 && `(${stats.noDocs})`}</span>
+        </Button>
+
+        {/* Project Links & Full Stack Quick Filters */}
+        <Button
+          size="sm"
+          variant={projectFilter === "HAS_PROJECTS" ? "default" : "outline"}
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setProjectFilter(projectFilter === "HAS_PROJECTS" ? "ALL" : "HAS_PROJECTS");
+          }}
+          className={`text-xs ${
+            projectFilter === "HAS_PROJECTS"
+              ? "bg-blue-600 text-white hover:bg-blue-700 font-semibold"
+              : "text-blue-700 border-blue-300 hover:bg-blue-50 dark:text-blue-300 dark:border-blue-700 dark:hover:bg-blue-950/30"
+          }`}
+          title="Filter candidates who submitted General Project Links"
+        >
+          <span>📁 General Projects {stats.hasProjects > 0 && `(${stats.hasProjects})`}</span>
+        </Button>
+
+        <Button
+          size="sm"
+          variant={projectFilter === "HAS_FULLSTACK" ? "default" : "outline"}
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setProjectFilter(projectFilter === "HAS_FULLSTACK" ? "ALL" : "HAS_FULLSTACK");
+          }}
+          className={`text-xs ${
+            projectFilter === "HAS_FULLSTACK"
+              ? "bg-purple-600 text-white hover:bg-purple-700 font-semibold"
+              : "text-purple-700 border-purple-300 hover:bg-purple-50 dark:text-purple-300 dark:border-purple-700 dark:hover:bg-purple-950/30"
+          }`}
+          title="Filter candidates who submitted Full Stack Developer Project Links"
+        >
+          <span>⚡ Full Stack Projects {stats.hasFullstack > 0 && `(${stats.hasFullstack})`}</span>
+        </Button>
+
+        <Button
+          size="sm"
+          variant={projectFilter === "PENDING_VERIFY" ? "default" : "outline"}
+          onClick={() => {
+            setActiveSection("STUDENTS");
+            setProjectFilter(projectFilter === "PENDING_VERIFY" ? "ALL" : "PENDING_VERIFY");
+          }}
+          className={`text-xs ${
+            projectFilter === "PENDING_VERIFY"
+              ? "bg-amber-600 text-white hover:bg-amber-700 font-semibold animate-pulse"
+              : "text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-950/30"
+          }`}
+          title="Filter candidates with project links waiting for coordinator review & verification"
+        >
+          <AlertCircle className="mr-1 h-3 w-3" />
+          <span>Verify Project Links {stats.pendingLinkVerification > 0 && `(${stats.pendingLinkVerification})`}</span>
         </Button>
 
         <Button
@@ -1237,7 +1397,19 @@ export function Dashboard({
           <div className="flex flex-col gap-3 p-4 border-b border-[#e2ded5] dark:border-[#262f3c] sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-[#1c2024] dark:text-white">
-                {topicFilter !== "ALL"
+                {projectFilter === "HAS_PROJECTS"
+                  ? "Students with General Project Links"
+                  : projectFilter === "HAS_FULLSTACK"
+                  ? "Students with Full-Stack Project Links"
+                  : projectFilter === "HAS_INHOUSE"
+                  ? "Students with In-House Projects"
+                  : projectFilter === "PENDING_VERIFY"
+                  ? "Students Awaiting Project Link Verification"
+                  : projectFilter === "VERIFIED"
+                  ? "Students with Verified Project Links"
+                  : projectFilter === "NO_PROJECTS"
+                  ? "Students with No Project Links"
+                  : topicFilter !== "ALL"
                   ? `Students Missing: ${docCategoryLabel(topicFilter)}`
                   : docFilter === "MISSING"
                   ? "Students with Missing Documents"
@@ -1267,6 +1439,27 @@ export function Dashboard({
                   className="h-8 pl-8 text-xs"
                 />
               </div>
+
+              {/* Project Links & Full Stack Submission Filter */}
+              <select
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value as ProjectFilter)}
+                className={`h-8 rounded-md border px-2 text-xs font-medium outline-none transition-colors ${
+                  projectFilter !== "ALL"
+                    ? "border-purple-500 bg-purple-50 text-purple-900 dark:border-purple-700 dark:bg-purple-950/40 dark:text-purple-200"
+                    : "border-[#d8d3c7] bg-white text-[#1c2024] dark:border-[#333e4e] dark:bg-[#1b222c] dark:text-[#f0ede6]"
+                }`}
+                title="Filter by submitted project links and full-stack projects"
+              >
+                <option value="ALL">All Project Submissions</option>
+                <option value="HAS_ANY_PROJECT">🚀 Any Project Submitted ({stats.hasAnyProjects})</option>
+                <option value="HAS_PROJECTS">📁 General Projects ({stats.hasProjects})</option>
+                <option value="HAS_FULLSTACK">⚡ Full Stack Projects ({stats.hasFullstack})</option>
+                <option value="HAS_INHOUSE">🏛️ In-house Projects ({stats.hasInhouse})</option>
+                <option value="PENDING_VERIFY">⏳ Needs Link Verification ({stats.pendingLinkVerification})</option>
+                <option value="VERIFIED">✓ Verified Projects ({stats.verifiedProjects})</option>
+                <option value="NO_PROJECTS">❌ No Project Links (0 files)</option>
+              </select>
 
               {/* Document Submission Status Filter */}
               <select
@@ -1344,6 +1537,7 @@ export function Dashboard({
               >
                 <option value="rank">Sort by Rank</option>
                 <option value="totalScore">Sort by Matrix Score</option>
+                <option value="projectLinks">Sort by Project Links</option>
                 <option value="missingDocs">Sort by Missing Documents</option>
                 <option value="cgpa">Sort by CGPA</option>
                 <option value="name">Sort by Student Name</option>
@@ -1407,7 +1601,15 @@ export function Dashboard({
                 {!loading && filtered.length === 0 && (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-[#5c6470]">
-                      {docFilter === "MISSING"
+                      {projectFilter === "HAS_PROJECTS"
+                        ? "No students found who submitted general project links."
+                        : projectFilter === "HAS_FULLSTACK"
+                        ? "No students found who submitted full stack project links."
+                        : projectFilter === "HAS_INHOUSE"
+                        ? "No students found with in-house project links or documents."
+                        : projectFilter === "PENDING_VERIFY"
+                        ? "All submitted project links have already been verified! No pending link reviews."
+                        : docFilter === "MISSING"
                         ? "No students found with missing documents. All candidates have uploaded required verification documents."
                         : docFilter === "COMPLETE"
                         ? "No students found who have completed all required document uploads yet."
@@ -1444,6 +1646,63 @@ export function Dashboard({
                             </span>
                           )}
                         </div>
+
+                        {/* Submitted Project Links Badges */}
+                        {(() => {
+                          const pLinks = (s.projectLinks || []).filter(
+                            (l) => l.category === "PROJECT" || !l.category
+                          );
+                          const fsLinks = (s.projectLinks || []).filter(
+                            (l) => l.category === "FULLSTACK_PROJECT"
+                          );
+                          const ihLinks = (s.projectLinks || []).filter(
+                            (l) => l.category === "INHOUSE_PROJECT_LINK"
+                          );
+                          const hasLegacy = Boolean(s.proofUrls && s.proofUrls.length > 0);
+                          const projCount = pLinks.length + (hasLegacy ? s.proofUrls.length : 0);
+                          const allLinks = s.projectLinks || [];
+                          const pendingLinks = allLinks.filter((l) => l.status === "PENDING");
+                          const totalLinks = allLinks.length + (hasLegacy ? s.proofUrls.length : 0);
+
+                          if (totalLinks === 0) return null;
+
+                          return (
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {projCount > 0 && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 rounded bg-blue-500/10 border border-blue-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300"
+                                  title={`${projCount} General Project link(s) submitted. Score awarded: ${s.scores.projects}/5`}
+                                >
+                                  📁 {projCount} Proj ({s.scores.projects}/5)
+                                </span>
+                              )}
+                              {fsLinks.length > 0 && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 rounded bg-purple-500/10 border border-purple-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300"
+                                  title={`${fsLinks.length} Full-Stack Project link(s) submitted. Score awarded: ${s.scores.fullstack}/5`}
+                                >
+                                  ⚡ {fsLinks.length} Full-Stack ({s.scores.fullstack}/5)
+                                </span>
+                              )}
+                              {ihLinks.length > 0 && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300"
+                                  title={`${ihLinks.length} In-House Project link(s) submitted. Score awarded: ${s.scores.inhouse}/5`}
+                                >
+                                  🏛️ {ihLinks.length} In-House ({s.scores.inhouse}/5)
+                                </span>
+                              )}
+                              {pendingLinks.length > 0 && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 dark:text-amber-300 animate-pulse"
+                                  title={`${pendingLinks.length} project link(s) pending coordinator verification`}
+                                >
+                                  ⏳ {pendingLinks.length} Needs Review
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* CGPA (visible only to coordinators with the academic scope) */}
@@ -1572,10 +1831,21 @@ export function Dashboard({
 
                           <Button
                             size="sm"
-                            className="h-7 px-2.5 text-xs bg-[#165b33] text-white hover:bg-[#124929]"
+                            className={`h-7 px-2.5 text-xs font-semibold ${
+                              (s.projectLinks || []).some((l) => l.status === "PENDING")
+                                ? "bg-amber-600 text-white hover:bg-amber-700 shadow-xs"
+                                : "bg-[#165b33] text-white hover:bg-[#124929]"
+                            }`}
                             onClick={() => setSelectedId(s.id)}
+                            title={
+                              (s.projectLinks || []).some((l) => l.status === "PENDING")
+                                ? "Review pending project links and award marks"
+                                : "View details and enter score breakdown"
+                            }
                           >
-                            Edit Score
+                            {(s.projectLinks || []).some((l) => l.status === "PENDING")
+                              ? "Verify & Score"
+                              : "Edit Score"}
                           </Button>
 
                           {isSuperAdmin && (
