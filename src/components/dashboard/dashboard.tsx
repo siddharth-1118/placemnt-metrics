@@ -254,18 +254,18 @@ export function Dashboard({
     for (let i = 1; i <= maxProjects; i++) headers.push(`Projects Done - Link ${i}`);
     for (let i = 1; i <= maxFullstack; i++) headers.push(`Full Stack Developer - Link ${i}`);
     for (let i = 1; i <= maxInhouseLinks; i++) headers.push(`Inhouse Projects - Link ${i}`);
-    for (let i = 1; i <= maxInhouseDocs; i++) headers.push(`Inhouse Projects - Document ${i}`);
-    for (let i = 1; i <= maxInternships; i++) headers.push(`Internship Experience - Document ${i}`);
-    for (let i = 1; i <= maxCerts; i++) headers.push(`Skillset & Certifications - Document ${i}`);
-    for (let i = 1; i <= maxHackathons; i++) headers.push(`Coding Competitions & Hackathons - Document ${i}`);
-    for (let i = 1; i <= maxMemberships; i++) headers.push(`Professional Membership - Document ${i}`);
-    for (let i = 1; i <= maxShl; i++) headers.push(`SHL Assessment - Document ${i}`);
+    for (let i = 1; i <= maxInhouseDocs; i++) headers.push(`Inhouse Projects - Document ${i} Link`);
+    for (let i = 1; i <= maxInternships; i++) headers.push(`Internship Experience - Document ${i} Link`);
+    for (let i = 1; i <= maxCerts; i++) headers.push(`Skillset & Certifications - Document ${i} Link`);
+    for (let i = 1; i <= maxHackathons; i++) headers.push(`Coding Competitions & Hackathons - Document ${i} Link`);
+    for (let i = 1; i <= maxMemberships; i++) headers.push(`Professional Membership - Document ${i} Link`);
+    for (let i = 1; i <= maxShl; i++) headers.push(`SHL Assessment - Document ${i} Link`);
     headers.push(
-      "Academic - 10th Marksheet Document",
-      "Academic - 12th Marksheet Document",
-      "Academic - Degree CGPA Marksheet Document",
-      "Academic - Semester 1 Marksheet Document",
-      "Academic - Semester 2 Marksheet Document"
+      "Academic - 10th Marksheet Link",
+      "Academic - 12th Marksheet Link",
+      "Academic - Degree CGPA Marksheet Link",
+      "Academic - Semester 1 Marksheet Link",
+      "Academic - Semester 2 Marksheet Link"
     );
 
     const rows = list.map((s) => {
@@ -323,24 +323,24 @@ export function Dashboard({
       // Projects
       const projectItems: string[] = [];
       for (const p of (s.projectLinks || []).filter((l) => l.category === "PROJECT" || !l.category)) {
-        if (p.url) projectItems.push(getItemText(p.label, p.url));
+        if (p.url) projectItems.push(p.url.trim());
       }
       for (const p of s.proofUrls || []) {
-        if (p?.url) projectItems.push(getItemText(p.label, p.url));
+        if (p?.url) projectItems.push(p.url.trim());
       }
       for (let i = 0; i < maxProjects; i++) r.push(escapeCsv(projectItems[i] || ""));
 
       // Fullstack
       const fullstackItems: string[] = [];
       for (const p of (s.projectLinks || []).filter((l) => l.category === "FULLSTACK_PROJECT")) {
-        if (p.url) fullstackItems.push(getItemText(p.label, p.url));
+        if (p.url) fullstackItems.push(p.url.trim());
       }
       for (let i = 0; i < maxFullstack; i++) r.push(escapeCsv(fullstackItems[i] || ""));
 
       // Inhouse links
       const inhouseLinkItems: string[] = [];
       for (const p of (s.projectLinks || []).filter((l) => l.category === "INHOUSE_PROJECT_LINK")) {
-        if (p.url) inhouseLinkItems.push(getItemText(p.label, p.url));
+        if (p.url) inhouseLinkItems.push(p.url.trim());
       }
       for (let i = 0; i < maxInhouseLinks; i++) r.push(escapeCsv(inhouseLinkItems[i] || ""));
 
@@ -348,59 +348,59 @@ export function Dashboard({
       const inhouseDocItems = (s.documents || []).filter((d) => d.category === "INHOUSE_PROJECT");
       for (let i = 0; i < maxInhouseDocs; i++) {
         const doc = inhouseDocItems[i];
-        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+        r.push(escapeCsv(doc ? makeCsvDocLink(doc, s.uploadToken) : ""));
       }
 
       // Internships
       const internDocItems = (s.documents || []).filter((d) => d.category === "INTERNSHIP");
       for (let i = 0; i < maxInternships; i++) {
         const doc = internDocItems[i];
-        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+        r.push(escapeCsv(doc ? makeCsvDocLink(doc, s.uploadToken) : ""));
       }
 
       // Certifications
       const certDocItems = (s.documents || []).filter((d) => d.category === "SKILL_CERT");
       for (let i = 0; i < maxCerts; i++) {
         const doc = certDocItems[i];
-        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+        r.push(escapeCsv(doc ? makeCsvDocLink(doc, s.uploadToken) : ""));
       }
 
       // Hackathons
       const hackDocItems = (s.documents || []).filter((d) => d.category === "COMPETITION");
       for (let i = 0; i < maxHackathons; i++) {
         const doc = hackDocItems[i];
-        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+        r.push(escapeCsv(doc ? makeCsvDocLink(doc, s.uploadToken) : ""));
       }
 
       // Memberships
       const memDocItems = (s.documents || []).filter((d) => d.category === "MEMBERSHIP");
       for (let i = 0; i < maxMemberships; i++) {
         const doc = memDocItems[i];
-        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+        r.push(escapeCsv(doc ? makeCsvDocLink(doc, s.uploadToken) : ""));
       }
 
       // SHL
       const shlDocItems = (s.documents || []).filter((d) => d.category === "SHL");
       for (let i = 0; i < maxShl; i++) {
         const doc = shlDocItems[i];
-        r.push(escapeCsv(doc ? getItemText(doc.fileName, makeCsvDocLink(doc, s.uploadToken), doc.note) : ""));
+        r.push(escapeCsv(doc ? makeCsvDocLink(doc, s.uploadToken) : ""));
       }
 
       // Marksheets
       const doc10th = (s.documents || []).find((d) => d.category === "TENTH_MARKSHEET");
-      r.push(escapeCsv(doc10th ? getItemText(doc10th.fileName, makeCsvDocLink(doc10th, s.uploadToken), doc10th.note) : ""));
+      r.push(escapeCsv(doc10th ? makeCsvDocLink(doc10th, s.uploadToken) : ""));
 
       const doc12th = (s.documents || []).find((d) => d.category === "TWELFTH_MARKSHEET");
-      r.push(escapeCsv(doc12th ? getItemText(doc12th.fileName, makeCsvDocLink(doc12th, s.uploadToken), doc12th.note) : ""));
+      r.push(escapeCsv(doc12th ? makeCsvDocLink(doc12th, s.uploadToken) : ""));
 
       const docCgpa = (s.documents || []).find((d) => d.category === "CGPA_MARKSHEET");
-      r.push(escapeCsv(docCgpa ? getItemText(docCgpa.fileName, makeCsvDocLink(docCgpa, s.uploadToken), docCgpa.note) : ""));
+      r.push(escapeCsv(docCgpa ? makeCsvDocLink(docCgpa, s.uploadToken) : ""));
 
       const docSem1 = (s.documents || []).find((d) => d.category === "SEM1_MARKSHEET");
-      r.push(escapeCsv(docSem1 ? getItemText(docSem1.fileName, makeCsvDocLink(docSem1, s.uploadToken), docSem1.note) : ""));
+      r.push(escapeCsv(docSem1 ? makeCsvDocLink(docSem1, s.uploadToken) : ""));
 
       const docSem2 = (s.documents || []).find((d) => d.category === "SEM2_MARKSHEET");
-      r.push(escapeCsv(docSem2 ? getItemText(docSem2.fileName, makeCsvDocLink(docSem2, s.uploadToken), docSem2.note) : ""));
+      r.push(escapeCsv(docSem2 ? makeCsvDocLink(docSem2, s.uploadToken) : ""));
 
       return r;
     });

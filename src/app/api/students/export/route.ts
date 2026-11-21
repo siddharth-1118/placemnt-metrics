@@ -208,37 +208,37 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = "")
     columnWidths.push(42);
   }
   for (let i = 1; i <= maxInhouseDocs; i++) {
-    headers.push(`Inhouse Projects - Document ${i}`);
+    headers.push(`Inhouse Projects - Document ${i} Link`);
     columnWidths.push(45);
   }
   for (let i = 1; i <= maxInternships; i++) {
-    headers.push(`Internship Experience - Document ${i}`);
+    headers.push(`Internship Experience - Document ${i} Link`);
     columnWidths.push(45);
   }
   for (let i = 1; i <= maxCerts; i++) {
-    headers.push(`Skillset & Certifications - Document ${i}`);
+    headers.push(`Skillset & Certifications - Document ${i} Link`);
     columnWidths.push(45);
   }
   for (let i = 1; i <= maxHackathons; i++) {
-    headers.push(`Coding Competitions & Hackathons - Document ${i}`);
+    headers.push(`Coding Competitions & Hackathons - Document ${i} Link`);
     columnWidths.push(45);
   }
   for (let i = 1; i <= maxMemberships; i++) {
-    headers.push(`Professional Membership - Document ${i}`);
+    headers.push(`Professional Membership - Document ${i} Link`);
     columnWidths.push(42);
   }
   for (let i = 1; i <= maxShl; i++) {
-    headers.push(`SHL Assessment - Document ${i}`);
+    headers.push(`SHL Assessment - Document ${i} Link`);
     columnWidths.push(45);
   }
 
   // Academic marksheets
   headers.push(
-    "Academic - 10th Marksheet Document",
-    "Academic - 12th Marksheet Document",
-    "Academic - Degree CGPA Marksheet Document",
-    "Academic - Semester 1 Marksheet Document",
-    "Academic - Semester 2 Marksheet Document"
+    "Academic - 10th Marksheet Link",
+    "Academic - 12th Marksheet Link",
+    "Academic - Degree CGPA Marksheet Link",
+    "Academic - Semester 1 Marksheet Link",
+    "Academic - Semester 2 Marksheet Link"
   );
   columnWidths.push(45, 45, 45, 45, 45);
 
@@ -347,112 +347,106 @@ function buildPlacementMatrixXlsx(students: ExportableCandidate[], baseUrl = "")
       { value: s.leetcodeUrl || "", style: "default" },
     ];
 
-    // 1. Projects Done (Link 1..N) - each in its own box
+    // 1. Projects Done (Link 1..N) - pure clickable URL
     const projectItems: string[] = [];
     for (const p of (s.projectLinks || []).filter((l) => l.category === "PROJECT" || !l.category)) {
-      if (p.url) projectItems.push(getItemText(p.label, p.url));
+      if (p.url) projectItems.push(p.url.trim());
     }
     for (const p of parseProofUrls(s.proofUrls)) {
-      if (p.url) projectItems.push(getItemText(p.label, p.url));
+      if (p.url) projectItems.push(p.url.trim());
     }
     for (let i = 0; i < maxProjects; i++) {
       row.push({ value: projectItems[i] || "", style: "default" });
     }
 
-    // 2. Full Stack Developer (Link 1..N) - each in its own box
+    // 2. Full Stack Developer (Link 1..N) - pure clickable URL
     const fullstackItems: string[] = [];
     for (const p of (s.projectLinks || []).filter((l) => l.category === "FULLSTACK_PROJECT")) {
-      if (p.url) fullstackItems.push(getItemText(p.label, p.url));
+      if (p.url) fullstackItems.push(p.url.trim());
     }
     for (let i = 0; i < maxFullstack; i++) {
       row.push({ value: fullstackItems[i] || "", style: "default" });
     }
 
-    // 3. Inhouse Projects Links (Link 1..N) - each in its own box
+    // 3. Inhouse Projects Links (Link 1..N) - pure clickable URL
     const inhouseLinkItems: string[] = [];
     for (const p of (s.projectLinks || []).filter((l) => l.category === "INHOUSE_PROJECT_LINK")) {
-      if (p.url) inhouseLinkItems.push(getItemText(p.label, p.url));
+      if (p.url) inhouseLinkItems.push(p.url.trim());
     }
     for (let i = 0; i < maxInhouseLinks; i++) {
       row.push({ value: inhouseLinkItems[i] || "", style: "default" });
     }
 
-    // 4. Inhouse Projects Documents (Doc 1..N) - each in its own box
+    // 4. Inhouse Projects Documents (Doc 1..N) - pure clickable URL
     const inhouseDocItems = (s.documents || []).filter((d) => d.category === "INHOUSE_PROJECT");
     for (let i = 0; i < maxInhouseDocs; i++) {
       const doc = inhouseDocItems[i];
-      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
-      row.push({ value: val, style: "default" });
+      row.push({ value: doc ? makeDocLink(doc, s, baseUrl) : "", style: "default" });
     }
 
-    // 5. Internship Documents (Doc 1..N) - each in its own box
+    // 5. Internship Documents (Doc 1..N) - pure clickable URL
     const internDocItems = (s.documents || []).filter((d) => d.category === "INTERNSHIP");
     for (let i = 0; i < maxInternships; i++) {
       const doc = internDocItems[i];
-      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
-      row.push({ value: val, style: "default" });
+      row.push({ value: doc ? makeDocLink(doc, s, baseUrl) : "", style: "default" });
     }
 
-    // 6. Skillset & Certifications Documents (Doc 1..N) - each in its own box
+    // 6. Skillset & Certifications Documents (Doc 1..N) - pure clickable URL
     const certDocItems = (s.documents || []).filter((d) => d.category === "SKILL_CERT");
     for (let i = 0; i < maxCerts; i++) {
       const doc = certDocItems[i];
-      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
-      row.push({ value: val, style: "default" });
+      row.push({ value: doc ? makeDocLink(doc, s, baseUrl) : "", style: "default" });
     }
 
-    // 7. Coding Competitions & Hackathons Documents (Doc 1..N) - each in its own box
+    // 7. Coding Competitions & Hackathons Documents (Doc 1..N) - pure clickable URL
     const hackDocItems = (s.documents || []).filter((d) => d.category === "COMPETITION");
     for (let i = 0; i < maxHackathons; i++) {
       const doc = hackDocItems[i];
-      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
-      row.push({ value: val, style: "default" });
+      row.push({ value: doc ? makeDocLink(doc, s, baseUrl) : "", style: "default" });
     }
 
-    // 8. Professional Memberships Documents (Doc 1..N) - each in its own box
+    // 8. Professional Memberships Documents (Doc 1..N) - pure clickable URL
     const memDocItems = (s.documents || []).filter((d) => d.category === "MEMBERSHIP");
     for (let i = 0; i < maxMemberships; i++) {
       const doc = memDocItems[i];
-      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
-      row.push({ value: val, style: "default" });
+      row.push({ value: doc ? makeDocLink(doc, s, baseUrl) : "", style: "default" });
     }
 
-    // 9. SHL Assessment Documents (Doc 1..N) - each in its own box
+    // 9. SHL Assessment Documents (Doc 1..N) - pure clickable URL
     const shlDocItems = (s.documents || []).filter((d) => d.category === "SHL");
     for (let i = 0; i < maxShl; i++) {
       const doc = shlDocItems[i];
-      const val = doc ? getItemText(doc.fileName, makeDocLink(doc, s, baseUrl), doc.note) : "";
-      row.push({ value: val, style: "default" });
+      row.push({ value: doc ? makeDocLink(doc, s, baseUrl) : "", style: "default" });
     }
 
-    // 10. Academic Marksheet Documents - each in its own box
+    // 10. Academic Marksheets - pure clickable URL highlighting the marksheet
     const doc10th = (s.documents || []).find((d) => d.category === "TENTH_MARKSHEET");
     row.push({
-      value: doc10th ? getItemText(doc10th.fileName, makeDocLink(doc10th, s, baseUrl), doc10th.note) : "",
+      value: doc10th ? makeDocLink(doc10th, s, baseUrl) : "",
       style: "default",
     });
 
     const doc12th = (s.documents || []).find((d) => d.category === "TWELFTH_MARKSHEET");
     row.push({
-      value: doc12th ? getItemText(doc12th.fileName, makeDocLink(doc12th, s, baseUrl), doc12th.note) : "",
+      value: doc12th ? makeDocLink(doc12th, s, baseUrl) : "",
       style: "default",
     });
 
     const docCgpa = (s.documents || []).find((d) => d.category === "CGPA_MARKSHEET");
     row.push({
-      value: docCgpa ? getItemText(docCgpa.fileName, makeDocLink(docCgpa, s, baseUrl), docCgpa.note) : "",
+      value: docCgpa ? makeDocLink(docCgpa, s, baseUrl) : "",
       style: "default",
     });
 
     const docSem1 = (s.documents || []).find((d) => d.category === "SEM1_MARKSHEET");
     row.push({
-      value: docSem1 ? getItemText(docSem1.fileName, makeDocLink(docSem1, s, baseUrl), docSem1.note) : "",
+      value: docSem1 ? makeDocLink(docSem1, s, baseUrl) : "",
       style: "default",
     });
 
     const docSem2 = (s.documents || []).find((d) => d.category === "SEM2_MARKSHEET");
     row.push({
-      value: docSem2 ? getItemText(docSem2.fileName, makeDocLink(docSem2, s, baseUrl), docSem2.note) : "",
+      value: docSem2 ? makeDocLink(docSem2, s, baseUrl) : "",
       style: "default",
     });
 
